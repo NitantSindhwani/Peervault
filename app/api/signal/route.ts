@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 // In-Memory Signaling Cache
 const signalCache = new Map<
   string,
-  { offer?: any; answer?: any; iceCandidates?: any[]; updatedAt: number }
+  { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }
 >();
 
 // Ephemeral Ciphertext Staging Cache (24-Hour TTL self-destruct)
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
     }
 
-    const current = signalCache.get(roomId) || { iceCandidates: [], updatedAt: Date.now() };
+    const current = signalCache.get(roomId) || { senderCandidates: [], receiverCandidates: [], updatedAt: Date.now() };
 
     if (action === 'submit_offer') {
       current.offer = offer;
@@ -53,10 +53,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    if (action === 'submit_candidate') {
+    if (action === 'submit_sender_candidate' || action === 'submit_candidate') {
       if (candidate) {
-        current.iceCandidates = current.iceCandidates || [];
-        current.iceCandidates.push(candidate);
+        current.senderCandidates = current.senderCandidates || [];
+        current.senderCandidates.push(candidate);
+        current.updatedAt = Date.now();
+        signalCache.set(roomId, current);
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'submit_receiver_candidate') {
+      if (candidate) {
+        current.receiverCandidates = current.receiverCandidates || [];
+        current.receiverCandidates.push(candidate);
         current.updatedAt = Date.now();
         signalCache.set(roomId, current);
       }
@@ -135,6 +145,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     offer: signal.offer || null,
     answer: signal.answer || null,
-    iceCandidates: signal.iceCandidates || [],
+    senderCandidates: signal.senderCandidates || [],
+    receiverCandidates: signal.receiverCandidates || [],
   });
 }

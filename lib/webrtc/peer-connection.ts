@@ -86,12 +86,17 @@ export function createReceiverPeerConnection(
       channels.telemetryChannel = channel;
     }
 
-    if (channels.controlChannel && channels.dataChannel && !fired) {
-      fired = true;
-      if (onChannelsReady) {
-        onChannelsReady(channels);
+    const checkReady = () => {
+      if (channels.controlChannel && channels.dataChannel && !fired) {
+        fired = true;
+        if (onChannelsReady) {
+          onChannelsReady(channels);
+        }
       }
-    }
+    };
+
+    channel.onopen = checkReady;
+    checkReady();
   };
 
   return { pc };

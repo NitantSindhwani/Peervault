@@ -3,44 +3,13 @@
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Lightning, ShieldCheck, ArrowRight, Cpu, CheckCircle } from '@phosphor-icons/react';
-import { gsap } from 'gsap';
 
 export function LandingHero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from('[data-hero-badge]', {
-        opacity: 0,
-        x: -20,
-        duration: 0.5,
-        delay: 0.1,
-      });
-      gsap.from('[data-hero-title]', {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        ease: 'power3.out',
-        delay: 0.2,
-      });
-      gsap.from('[data-hero-sub]', {
-        opacity: 0,
-        y: 20,
-        duration: 0.6,
-        delay: 0.5,
-      });
-      gsap.from('[data-hero-cta]', {
-        scale: 0.94,
-        opacity: 0,
-        duration: 0.5,
-        ease: 'back.out(1.7)',
-        stagger: 0.08,
-        delay: 0.7,
-      });
-    }, heroRef);
-
-    return () => ctx.revert();
+    // Keep hero CTA buttons 100% visible and robust without GSAP opacity mutations
   }, []);
 
   useEffect(() => {
@@ -240,37 +209,39 @@ export function LandingHero() {
                 <span className="text-[var(--text-secondary)]">Zero Server Relay</span>
               </div>
 
-              {/* Central Telemetry Simulator Output */}
+              {/* Central Telemetry Engine Output */}
               <div className="relative z-10 space-y-4 my-auto font-mono text-xs">
                 <div className="bg-[var(--bg-main)]/90 backdrop-blur p-4 rounded-xl border border-[var(--border-color)] space-y-3">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-[var(--text-secondary)]">Browser Connection:</span>
-                    <span className="text-[var(--success)] font-bold">CONNECTED (Direct P2P)</span>
+                    <span className="text-[var(--text-secondary)]">WebRTC DataChannel:</span>
+                    <span className="text-[var(--success)] font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-ping" />
+                      ACTIVE READY
+                    </span>
                   </div>
                   
-                  {/* Progress Bar */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[11px]">
-                      <span>Streaming Dataset.tar.gz</span>
-                      <span className="text-[var(--accent)]">784 MB / 1.2 GB (65%)</span>
-                    </div>
-                    <div className="w-full bg-[var(--border-color)] h-2 rounded-full overflow-hidden">
-                      <div className="bg-[var(--accent)] h-full w-[65%] rounded-full transition-all duration-300 glow-amber" />
-                    </div>
+                  {/* Connection Architecture Status */}
+                  <div className="bg-[var(--bg-surface)] p-2.5 rounded-lg border border-[var(--border-color)] flex items-center justify-between text-[11px]">
+                    <span className="text-[var(--text-secondary)] font-mono">P2P Channel Throughput:</span>
+                    <span className="text-[var(--accent)] font-mono font-bold">1,000 Mbps Capable</span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--text-secondary)]">
-                    <div>
-                      <span>Speed:</span> <strong className="text-[var(--text-primary)] tabular-nums">118.4 MB/s</strong>
+                  <div className="grid grid-cols-2 gap-2.5 text-[10px] text-[var(--text-secondary)] pt-1">
+                    <div className="bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
+                      <span className="block text-[9px] uppercase">Transfer Latency</span>
+                      <strong className="text-[var(--success)] text-xs font-bold tabular-nums">&lt; 1.0 ms (LAN)</strong>
                     </div>
-                    <div>
-                      <span>Latency:</span> <strong className="text-[var(--text-primary)] tabular-nums">1.4 ms</strong>
+                    <div className="bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
+                      <span className="block text-[9px] uppercase">Server Cloud Cost</span>
+                      <strong className="text-[var(--accent)] text-xs font-bold tabular-nums">₹0 / $0 Free</strong>
                     </div>
-                    <div>
-                      <span>Encryption:</span> <strong className="text-[var(--success)]">AES-256-GCM</strong>
+                    <div className="bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
+                      <span className="block text-[9px] uppercase">Encryption</span>
+                      <strong className="text-[var(--text-primary)] text-xs font-bold">AES-256-GCM</strong>
                     </div>
-                    <div>
-                      <span>Server Costs:</span> <strong className="text-[var(--accent)]">₹0 / $0 Free</strong>
+                    <div className="bg-[var(--bg-surface)] p-2 rounded-lg border border-[var(--border-color)]">
+                      <span className="block text-[9px] uppercase">Integrity Check</span>
+                      <strong className="text-[var(--text-primary)] text-xs font-bold">BLAKE3 Merkle</strong>
                     </div>
                   </div>
                 </div>

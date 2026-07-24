@@ -313,7 +313,7 @@ export function useTransfer({
         } catch {}
 
         checkChannelsReady();
-      }, 100);
+      }, 800);
 
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
@@ -623,79 +623,8 @@ export function useTransfer({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      // 4. Setup DiskWriter
-      const diskWriter = new DiskWriter(fileName, fileSize);
-      await diskWriter.init();
-      diskWriterRef.current = diskWriter;
-
-      // 5. ALWAYS start staging poller — this must run regardless of WebRTC SDP status
-      // This is the guaranteed fallback path for any network condition
-      let isStagingComplete = false;
+      // 5. Setup DiskWriter & Transition State
       setState('negotiating');
-
-      const stagingPoller = setInterval(async () => {
-        if (isStagingComplete) {
-          clearInterval(stagingPoller);
-          return;
-        }
-        try {
-          const res = await fetch(`/api/signal?roomId=${cleanRoomId}&action=get_staging`);
-          const data = await res.json();
-          if (data.available && data.chunks && data.chunks.length > 0) {
-            isStagingComplete = true;
-            clearInterval(stagingPoller);
-            if (signalPollerRef.current) clearInterval(signalPollerRef.current);
-
-            setState('streaming');
-            const dw = diskWriterRef.current || new DiskWriter(data.fileName, data.fileSize);
-            if (!diskWriterRef.current) {
-              await dw.init();
-            }
-            dw.setFileName(data.fileName);
-
-            let receivedBytes = 0;
-            let chunkCount = 0;
-            const totalChunksEst = data.totalChunks || Math.ceil(data.fileSize / 64512);
-
-            for (const chunkItem of data.chunks) {
-              const hex = chunkItem.dataHex;
-              const len = hex.length;
-              const bytes = new Uint8Array(len >> 1);
-              for (let i = 0; i < len; i += 2) {
-                const high = hex.charCodeAt(i);
-                const low = hex.charCodeAt(i + 1);
-                const h = high >= 97 ? high - 87 : (high >= 65 ? high - 55 : high - 48);
-                const l = low >= 97 ? low - 87 : (low >= 65 ? low - 55 : low - 48);
-                bytes[i >> 1] = (h << 4) | l;
-              }
-              const payload = bytes.buffer.slice(16);
-              await dw.writeChunk(payload, receivedBytes);
-              receivedBytes += payload.byteLength;
-              chunkCount++;
-
-              const progressPercent = data.fileSize > 0 ? Math.min(100, (receivedBytes / data.fileSize) * 100) : 0;
-              setTelemetry((prev) => ({
-                ...prev,
-                bytesTransferred: receivedBytes,
-                totalBytes: data.fileSize,
-                totalChunks: totalChunksEst,
-                chunkIndex: chunkCount,
-                merkleVerifiedCount: chunkCount,
-                progressPercent,
-              }));
-            }
-
-            const result = await dw.close();
-            if (dw) {
-              setReceivedFileName(dw.getFileName());
-            }
-            if (result?.downloadUrl) {
-              setReceivedBlobUrl(result.downloadUrl);
-            }
-            setState('complete');
-          }
-        } catch {}
-      }, 100);
 
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
@@ -821,7 +750,7 @@ export function useTransfer({
               } catch {}
             }
           } catch {}
-        }, 100);
+        }, 800);
       }
     } catch (err: any) {
       console.error('[Transfer] Receiver error:', err);

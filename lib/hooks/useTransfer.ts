@@ -361,7 +361,7 @@ export function useTransfer({
     const totalSize = inputFile.size;
     let offset = 0;
     let chunkIndex = 0;
-    const totalChunksEstimate = Math.ceil(totalSize / 64512);
+    const totalChunksEstimate = Math.ceil(totalSize / scaler.getChunkSize());
 
     lastByteCountRef.current = 0;
     lastSampleTimeRef.current = Date.now();

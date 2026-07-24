@@ -16,6 +16,8 @@ export interface TelemetryData {
   connectionType: string;
   merkleVerifiedCount: number;
   memoryUsedMb: number;
+  totalBytes?: number;
+  chunkSizeBytes?: number;
 }
 
 export interface TelemetryDashboardProps {
@@ -24,6 +26,13 @@ export interface TelemetryDashboardProps {
 }
 
 export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboardProps) {
+  const getRealMemoryMb = () => {
+    if (typeof window !== 'undefined' && (window.performance as any)?.memory?.usedJSHeapSize) {
+      return parseFloat((((window.performance as any).memory.usedJSHeapSize) / (1024 * 1024)).toFixed(1));
+    }
+    return 24.8;
+  };
+
   const [telemetry, setTelemetry] = useState<TelemetryData>({
     transferSpeedMb: 0,
     rttMs: 0,
@@ -33,7 +42,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
     progressPercent: 0,
     connectionType: 'Direct LAN/P2P',
     merkleVerifiedCount: 0,
-    memoryUsedMb: 14.2,
+    memoryUsedMb: getRealMemoryMb(),
   });
 
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
@@ -49,6 +58,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
           const chunkIdx = liveData.chunkIndex ?? prev.chunkIndex;
           const totalChks = liveData.totalChunks ?? prev.totalChunks;
           const verified = liveData.merkleVerifiedCount ?? chunkIdx;
+          const currentMemory = getRealMemoryMb();
 
           return {
             ...prev,
@@ -57,6 +67,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
             chunkIndex: chunkIdx,
             totalChunks: totalChks,
             merkleVerifiedCount: verified,
+            memoryUsedMb: currentMemory,
           };
         });
 
@@ -183,7 +194,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
 
         <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
           <span>Verified Leaves: {telemetry.merkleVerifiedCount.toLocaleString()} / {telemetry.totalChunks.toLocaleString()}</span>
-          <span>Chunk Size: 64 KB</span>
+          <span>Chunk Size: {Math.round((telemetry.chunkSizeBytes || 262144) / 1024)} KB</span>
         </div>
       </div>
 

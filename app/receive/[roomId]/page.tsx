@@ -268,7 +268,14 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           </div>
 
           {/* Active Live Telemetry & Kinetic Topology */}
-          <TelemetryDashboard mock={false} liveData={telemetry} />
+          <TelemetryDashboard
+            mock={false}
+            liveData={{
+              ...telemetry,
+              totalBytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
+              totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 256000),
+            }}
+          />
 
         </div>
       ) : (

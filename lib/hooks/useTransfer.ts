@@ -157,6 +157,8 @@ export function useTransfer({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
+      const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
+
       const channels = createSenderPeerConnection();
       peerChannelsRef.current = channels;
 
@@ -178,8 +180,6 @@ export function useTransfer({
 
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
-
-      const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
 
       const offerPayload = {
         fileName: file.name,

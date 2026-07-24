@@ -67,6 +67,9 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           setIsUnlocked(true);
           startReceiver(roomId);
         }
+      } else {
+        setIsUnlocked(true);
+        startReceiver(roomId);
       }
     }
     checkOffer();

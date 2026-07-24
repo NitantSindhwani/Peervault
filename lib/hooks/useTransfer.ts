@@ -150,6 +150,21 @@ export function useTransfer({
         }
       };
 
+      // Handle Sender ICE Candidates and submit to /api/signal
+      channels.pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          await fetch('/api/signal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              roomId: generatedRoomId,
+              action: 'submit_sender_candidate',
+              candidate: event.candidate.toJSON(),
+            }),
+          }).catch(() => {});
+        }
+      };
+
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
 

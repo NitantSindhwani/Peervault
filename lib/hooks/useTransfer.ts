@@ -106,6 +106,20 @@ export function useTransfer({
   const lastByteCountRef = useRef<number>(0);
   const lastSampleTimeRef = useRef<number>(Date.now());
 
+  // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub)
+  const sendSignalMessage = useCallback((targetRoomId: string, payload: any) => {
+    fetch('/api/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId: targetRoomId, ...payload }),
+    }).catch(() => {});
+
+    fetch(`https://ntfy.sh/peervault_signal_${targetRoomId}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }, []);
+
   // Initialize WorkerPool and KeepAlive
   useEffect(() => {
     workerPoolRef.current = new WorkerPool(3);
@@ -150,20 +164,6 @@ export function useTransfer({
         if (channels.pc.connectionState === 'failed') {
           console.warn('[PeerConnection] Connection state failed');
         }
-      };
-
-      // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub)
-      const sendSignalMessage = (targetRoomId: string, payload: any) => {
-        fetch('/api/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomId: targetRoomId, ...payload }),
-        }).catch(() => {});
-
-        fetch(`https://ntfy.sh/peervault_signal_${targetRoomId}`, {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        }).catch(() => {});
       };
 
       // Handle Sender ICE Candidates and submit to signal relays

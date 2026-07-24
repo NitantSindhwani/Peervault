@@ -93,6 +93,7 @@ export function useTransfer({
   const bbrRef = useRef<BBRPacer | null>(null);
   const backpressureRef = useRef<BackpressureController | null>(null);
   const scalerRef = useRef<AdaptiveChunkScaler | null>(null);
+  const isFinalizingRef = useRef(false);
   const workerPoolRef = useRef<WorkerPool | null>(null);
   const keepAliveRef = useRef<KeepAliveManager | null>(null);
   const merkleTreeRef = useRef<MerkleTree | null>(null);
@@ -743,7 +744,8 @@ export function useTransfer({
             });
           }
 
-          if (receivedBytes >= targetSize && targetSize > 0) {
+          if (receivedBytes >= targetSize && targetSize > 0 && !isFinalizingRef.current) {
+            isFinalizingRef.current = true;
             if (roomId) removeResumeSession(roomId);
             setState('verifying');
             const result = await diskWriterRef.current.close();

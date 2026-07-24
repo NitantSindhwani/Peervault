@@ -31,7 +31,7 @@ function openDiskDB(): Promise<IDBDatabase> {
 
 export class DiskWriter {
   private tier: DiskWriterTier = 'memory_blob';
-  private memoryChunks: ArrayBuffer[] = [];
+  private memoryChunksMap: Map<number, ArrayBuffer> = new Map();
   private totalSize: number = 0;
   private writtenSize: number = 0;
   private chunkIndex: number = 0;
@@ -139,8 +139,10 @@ export class DiskWriter {
       }
     }
 
-    this.memoryChunks.push(chunk.slice(0));
-    this.writtenSize += chunk.byteLength;
+    if (!this.memoryChunksMap.has(offset)) {
+      this.writtenSize += chunk.byteLength;
+    }
+    this.memoryChunksMap.set(offset, chunk.slice(0));
   }
 
   /**
@@ -186,7 +188,11 @@ export class DiskWriter {
       }
     }
 
-    const blob = new Blob(this.memoryChunks, { type: this.mimeType });
+    const sortedChunks = Array.from(this.memoryChunksMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map((entry) => entry[1]);
+
+    const blob = new Blob(sortedChunks, { type: this.mimeType });
     const downloadUrl = URL.createObjectURL(blob);
     return { downloadUrl, blob, tier: this.tier };
   }

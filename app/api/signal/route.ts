@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server';
 const globalForSignal = globalThis as unknown as {
   signalCache: Map<string, { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }>;
   stagingCache: Map<string, { chunks: Map<number, string>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }>;
+  cleanupInterval?: any;
 };
 
 const signalCache = globalForSignal.signalCache || new Map();
@@ -14,19 +15,21 @@ globalForSignal.signalCache = signalCache;
 globalForSignal.stagingCache = stagingCache;
 
 // Cleanup stale entries every 60 seconds
-setInterval(() => {
-  const now = Date.now();
-  for (const [roomId, item] of signalCache.entries()) {
-    if (now - item.updatedAt > 600000) { // 10 minutes for signaling
-      signalCache.delete(roomId);
+if (!globalForSignal.cleanupInterval) {
+  globalForSignal.cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [roomId, item] of signalCache.entries()) {
+      if (now - item.updatedAt > 600000) { // 10 minutes for signaling
+        signalCache.delete(roomId);
+      }
     }
-  }
-  for (const [roomId, item] of stagingCache.entries()) {
-    if (now - item.updatedAt > 24 * 60 * 60 * 1000) { // 24 hours for staging
-      stagingCache.delete(roomId);
+    for (const [roomId, item] of stagingCache.entries()) {
+      if (now - item.updatedAt > 24 * 60 * 60 * 1000) { // 24 hours for staging
+        stagingCache.delete(roomId);
+      }
     }
-  }
-}, 60000);
+  }, 60000);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,7 +59,9 @@ export async function POST(request: NextRequest) {
     if (action === 'submit_sender_candidate' || action === 'submit_candidate') {
       if (candidate) {
         current.senderCandidates = current.senderCandidates || [];
-        current.senderCandidates.push(candidate);
+        if (current.senderCandidates.length < 50) {
+          current.senderCandidates.push(candidate);
+        }
         current.updatedAt = Date.now();
         signalCache.set(roomId, current);
       }
@@ -66,7 +71,9 @@ export async function POST(request: NextRequest) {
     if (action === 'submit_receiver_candidate') {
       if (candidate) {
         current.receiverCandidates = current.receiverCandidates || [];
-        current.receiverCandidates.push(candidate);
+        if (current.receiverCandidates.length < 50) {
+          current.receiverCandidates.push(candidate);
+        }
         current.updatedAt = Date.now();
         signalCache.set(roomId, current);
       }
@@ -77,6 +84,10 @@ export async function POST(request: NextRequest) {
     if (action === 'submit_staging') {
       let staging = stagingCache.get(roomId);
       if (!staging) {
+        if (stagingCache.size > 50) {
+          const oldestKey = stagingCache.keys().next().value;
+          if (oldestKey) stagingCache.delete(oldestKey);
+        }
         staging = {
           chunks: new Map<number, string>(),
           updatedAt: Date.now(),

@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Lightning, ShareNetwork, Copy, ChartLineUp, LockKey, List, X } from '@phosphor-icons/react';
+import { Lightning, ShareNetwork, Copy, ChartLineUp, LockKey, List, X, SpeakerHigh, SpeakerSimpleSlash } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'motion/react';
+import { soundEngine } from '@/lib/audio/sound-engine';
 
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   const isActive = (path: string) => pathname === path;
 
@@ -71,10 +73,16 @@ export function Navbar() {
 
         {/* System Integrity Badge & CTAs */}
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-[11px] font-mono text-[var(--text-secondary)]">
-            <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
-            <span>WebRTC Mesh Active</span>
-          </div>
+          <button
+            onClick={() => {
+              setIsMuted(soundEngine.toggleMute());
+              soundEngine.playHoverClick();
+            }}
+            className="p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+            title={isMuted ? 'Unmute Audio Feedback' : 'Mute Audio Feedback'}
+          >
+            {isMuted ? <SpeakerSimpleSlash className="w-4 h-4 text-red-400" /> : <SpeakerHigh className="w-4 h-4 text-[var(--accent)]" />}
+          </button>
 
           <Link
             href="/send"

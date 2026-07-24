@@ -11,6 +11,10 @@ import { DiskWriter } from '@/lib/disk/disk-writer';
 import { formatBytes, formatSpeed, formatETA } from '@/lib/utils/format';
 import { saveResumeSession, getResumeSession, removeResumeSession } from '@/lib/resume/ResumeStore';
 import { createInstantOfferHash, parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
+import { generateKyberKeyPair, encapsulateKyberSecret, decapsulateKyberSecret, bytesToHex, hexToBytes } from '@/lib/crypto/kyber';
+import { ForwardErrorCorrection } from '@/lib/crypto/fec';
+import { LocalSubnetDiscovery } from '@/lib/webrtc/local-discovery';
+import { SwarmMeshSeeder } from '@/lib/webrtc/swarm-mesh';
 
 export type TransferRole = 'sender' | 'receiver';
 export type TransferState =
@@ -146,6 +150,7 @@ export function useTransfer({
         fileSize: file.size,
         pubKeyHex,
         sdp: JSON.stringify(offer),
+        passphraseRequired: Boolean(passphrase),
         ttlHours,
         maxDownloads,
         timestamp: Date.now(),

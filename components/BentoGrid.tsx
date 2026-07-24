@@ -17,72 +17,72 @@ export function BentoGrid() {
     {
       colSpan: 'md:col-span-2',
       archNo: '#01',
-      title: 'BBR Speed Pacing & Congestion Control',
-      desc: 'Monitors ping and network latency continuously, dynamically pacing byte transmission to achieve maximum throughput without clogging your router or dropping packets.',
+      title: 'Maximum Speed Control',
+      desc: 'Monitors your network connection continuously to send data at peak speed without lagging your Wi-Fi or dropping connection.',
       icon: <ChartLineUp className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--accent)]',
       borderGlow: 'hover:border-[var(--accent)] glow-amber/10',
-      footerLeft: 'Sub-ms RTT Pacing',
-      footerRight: 'Max Throughput',
+      footerLeft: 'Smart Speed Control',
+      footerRight: 'Peak Rate',
       accentBg: false,
     },
     {
       colSpan: '',
       archNo: '#02',
-      title: 'Off-Thread WASM Crypto',
-      desc: 'Encryption and hashing run inside background Web Workers using hardware SIMD instructions so your browser UI stays smooth.',
+      title: 'Fast Browser Encryption',
+      desc: 'Files are encrypted directly inside your browser background threads so your laptop stays fast and smooth while sending.',
       icon: <Cpu className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--success)]',
       borderGlow: 'hover:border-[var(--success)]',
-      footerLeft: 'Zero UI Lag',
-      footerRight: 'AES-256 Hardware',
+      footerLeft: 'Zero Lag',
+      footerRight: 'AES-256 Encrypted',
       accentBg: true,
     },
     {
       colSpan: '',
       archNo: '#03',
-      title: '24-Hour Offline Staging',
-      desc: 'If a sender tab closes early, remaining encrypted chunks can optionally stage in temporary 24h self-destructing storage so the receiver finishes without interruption.',
+      title: '24-Hour Offline Backup',
+      desc: 'If your browser tab closes early, your recipient can still finish downloading from temporary self-destructing staging storage.',
       icon: <CloudArrowUp className="w-6 h-6" weight="bold" />,
       colorClass: 'text-amber-400',
       borderGlow: 'hover:border-amber-400',
-      footerLeft: 'Self-Destruct TTL',
+      footerLeft: 'Auto Self-Destruct',
       footerRight: 'Tab-Close Proof',
       accentBg: false,
     },
     {
       colSpan: '',
       archNo: '#04',
-      title: 'Zero-Knowledge OPAQUE Auth',
-      desc: 'Zero-knowledge mutual authentication. Passwords, master keys, and file contents are never sent to or visible by any signaling server.',
+      title: '100% Private & Password Locked',
+      desc: 'Zero-knowledge encryption ensures your files, passwords, and data are never sent to or stored on any central server.',
       icon: <Key className="w-6 h-6" weight="bold" />,
       colorClass: 'text-sky-400',
       borderGlow: 'hover:border-sky-400',
-      footerLeft: 'RFC 9807 Compliant',
+      footerLeft: 'End-to-End Encrypted',
       footerRight: '100% Private',
       accentBg: false,
     },
     {
       colSpan: 'md:col-span-2',
       archNo: '#05',
-      title: 'IndexedDB Auto-Resume Engine',
-      desc: 'Uses BLAKE3 Merkle integrity trees to track verified blocks. If connection drops, PeerVault automatically picks up exactly where it left off without re-downloading.',
+      title: 'Auto-Resume Interrupted Downloads',
+      desc: 'If your internet disconnects for a moment, PeerVault automatically picks up exactly where it left off without re-downloading.',
       icon: <GitFork className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--accent)]',
       borderGlow: 'hover:border-[var(--accent)]',
-      footerLeft: 'BLAKE3 Integrity',
+      footerLeft: 'Checksum Verified',
       footerRight: 'Auto Resume',
       accentBg: true,
     },
     {
       colSpan: '',
       archNo: '#06',
-      title: 'Memory RAM Guard (< 200MB)',
-      desc: 'Active backpressure management keeps memory usage under 200MB even when transferring 50GB+ datasets, preventing browser tab crashes.',
+      title: 'Low Memory Protection',
+      desc: 'Smart memory management keeps browser RAM usage tiny even when sending 50GB+ large video files, preventing tab crashes.',
       icon: <Gauge className="w-6 h-6" weight="bold" />,
       colorClass: 'text-emerald-400',
       borderGlow: 'hover:border-emerald-400',
-      footerLeft: 'RAM Guard Protection',
+      footerLeft: 'RAM Protection',
       footerRight: 'No Tab Crashes',
       accentBg: false,
     },
@@ -96,13 +96,13 @@ export function BentoGrid() {
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--accent)]">
             <Cpu className="w-3.5 h-3.5" />
-            <span>High-Performance P2P Architecture</span>
+            <span>High-Performance File Sharing</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] font-display">
             Built for Speed, Privacy, and Zero Costs
           </h2>
           <p className="text-sm text-[var(--text-secondary)] max-w-[65ch]">
-            Combining browser WebAssembly, WebRTC DataChannels, and client-side encryption for instant transfers.
+            Direct browser-to-browser streaming with zero size limits, zero server uploads, and end-to-end encryption.
           </p>
         </div>
 

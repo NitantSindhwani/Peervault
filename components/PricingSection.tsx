@@ -1,152 +1,75 @@
 'use client';
 
+import { Check, X, Lightning, ShieldCheck, Heart } from '@phosphor-icons/react';
 import Link from 'next/link';
-import { Check, Lightning, ShieldCheck, Crown } from '@phosphor-icons/react';
 
 export function PricingSection() {
+  const comparisons = [
+    { feature: 'Cloud File Upload Cost', peervault: '100% Free (₹0 / $0)', cloud: 'Paid Subscriptions ($12-$20/mo)' },
+    { feature: 'File Size Limits', peervault: 'Unlimited (GB / TB Direct Stream)', cloud: 'Capped (2GB - 10GB limits)' },
+    { feature: 'Cloud Storage Privacy', peervault: 'Zero Storage (Direct Peer-to-Peer)', cloud: 'Stored on Cloud Servers' },
+    { feature: 'End-to-End Encryption', peervault: 'AES-256-GCM On-Device', cloud: 'Server-Side Decrypted' },
+    { feature: 'Transfer Speed', peervault: 'Instant LAN / Direct Peer Rate', cloud: 'Throttled Upload Speeds' },
+    { feature: 'Auto-Resume Interrupted Stream', peervault: 'IndexedDB Merkle Tree Auto-Resume', cloud: 'Must Restart From 0%' },
+  ];
+
   return (
-    <section className="py-20 bg-[var(--bg-main)] border-b border-[var(--border-color)]">
+    <section className="py-20 bg-[var(--bg-surface)] border-b border-[var(--border-color)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         
-        {/* Header */}
-        <div className="text-center space-y-3 max-w-[65ch] mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--accent)]">
-            <Crown className="w-3.5 h-3.5" />
-            <span>Infrastructure & SaaS Tiers</span>
+        {/* Section Header */}
+        <div className="text-center space-y-3 max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] text-xs font-mono text-[var(--success)]">
+            <Heart className="w-3.5 h-3.5 text-red-400" weight="fill" />
+            <span>100% Free & Open Source Forever</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)]">
-            Transparent $0 Baseline Infrastructure
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] font-display">
+            Why Direct P2P Beats Cloud Uploads
           </h2>
-          <p className="text-sm text-[var(--text-secondary)]">
-            Unlimited browser-to-browser P2P transfers are free forever. Upgrade for dedicated cloud TURN relays and asynchronous staging.
+          <p className="text-sm text-[var(--text-secondary)] font-mono">
+            Zero subscription fees, zero server storage, and zero upload waiting time.
           </p>
         </div>
 
-        {/* 3 Pricing Bento Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
-          
-          {/* Free Tier */}
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-8 flex flex-col justify-between hover:border-[var(--text-secondary)] transition-all">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">Core Essentials</span>
-                <h3 className="text-2xl font-bold text-[var(--text-primary)]">Free Tier</h3>
-                <p className="text-xs text-[var(--text-secondary)]">100% direct browser-to-browser file transfers.</p>
-              </div>
-
-              <div className="text-3xl font-bold font-mono text-[var(--text-primary)]">$0 <span className="text-xs text-[var(--text-secondary)] font-normal">/ month</span></div>
-
-              <ul className="space-y-3 text-xs font-mono text-[var(--text-secondary)] border-t border-[var(--border-color)] pt-6">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Unlimited Dataset File Transfer Size</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Custom BBR Congestion Control Pacing</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>BLAKE3 Merkle Resume Verification</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Client-Side Metadata Stripping</span>
-                </li>
-              </ul>
+        {/* Comparison Table */}
+        <div className="max-w-4xl mx-auto bg-[var(--bg-main)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-2xl font-mono text-xs">
+          <div className="grid grid-cols-12 bg-[var(--bg-surface)] border-b border-[var(--border-color)] p-4 font-bold text-[var(--text-primary)]">
+            <div className="col-span-5">Feature Matrix</div>
+            <div className="col-span-4 text-[var(--accent)] flex items-center gap-1.5">
+              <Lightning className="w-4 h-4" weight="fill" />
+              Hardened PeerVault (Free)
             </div>
-
-            <Link
-              href="/send"
-              className="mt-8 w-full py-3 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] font-bold text-center hover:border-[var(--accent)] transition-colors block"
-            >
-              Start Free Transfer
-            </Link>
+            <div className="col-span-3 text-[var(--text-secondary)]">Traditional Cloud Storage</div>
           </div>
 
-          {/* Security+ Tier (Featured) */}
-          <div className="bg-gradient-to-b from-[var(--bg-surface)] to-[var(--bg-main)] border-2 border-[var(--accent)] rounded-2xl p-8 flex flex-col justify-between relative shadow-2xl glow-amber">
-            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-main)] text-[10px] font-mono font-bold uppercase tracking-wider">
-              Most Popular Security Mode
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <span className="text-xs font-mono text-[var(--accent)] uppercase tracking-wider">Privacy & Power-User</span>
-                <h3 className="text-2xl font-bold text-[var(--text-primary)]">Security+</h3>
-                <p className="text-xs text-[var(--text-secondary)]">OPAQUE PAKE zero-knowledge auth & clip sync.</p>
+          <div className="divide-y divide-[var(--border-color)]/40">
+            {comparisons.map((row, i) => (
+              <div key={i} className="grid grid-cols-12 p-4 items-center hover:bg-[var(--bg-surface)]/50 transition-colors">
+                <div className="col-span-5 font-semibold text-[var(--text-primary)]">{row.feature}</div>
+                <div className="col-span-4 text-[var(--success)] font-bold flex items-center gap-1">
+                  <Check className="w-4 h-4 shrink-0 text-[var(--success)]" weight="bold" />
+                  <span>{row.peervault}</span>
+                </div>
+                <div className="col-span-3 text-[var(--text-secondary)] flex items-center gap-1">
+                  <X className="w-3.5 h-3.5 shrink-0 text-red-400" />
+                  <span>{row.cloud}</span>
+                </div>
               </div>
-
-              <div className="text-3xl font-bold font-mono text-[var(--text-primary)]">$9 <span className="text-xs text-[var(--text-secondary)] font-normal">/ month</span></div>
-
-              <ul className="space-y-3 text-xs font-mono text-[var(--text-secondary)] border-t border-[var(--border-color)] pt-6">
-                <li className="flex items-center gap-2 text-[var(--text-primary)] font-medium">
-                  <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <span>RFC 9807 OPAQUE PAKE Zero-Knowledge</span>
-                </li>
-                <li className="flex items-center gap-2 text-[var(--text-primary)] font-medium">
-                  <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <span>ClipVault P2P Clipboard & Code Sync</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>5GB Ephemeral Cloud Staging Buffer</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Client-Side SRI & CSP Attestation</span>
-                </li>
-              </ul>
-            </div>
-
-            <Link
-              href="/send"
-              className="mt-8 w-full py-3 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold text-center hover:opacity-90 transition-opacity block"
-            >
-              Enable Security+
-            </Link>
+            ))}
           </div>
-
-          {/* Enterprise Tier */}
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-8 flex flex-col justify-between hover:border-[var(--text-secondary)] transition-all">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">Enterprise & SaaS</span>
-                <h3 className="text-2xl font-bold text-[var(--text-primary)]">Enterprise Hub</h3>
-                <p className="text-xs text-[var(--text-secondary)]">Custom portals, dedicated TURN, & signed receipts.</p>
-              </div>
-
-              <div className="text-3xl font-bold font-mono text-[var(--text-primary)]">$19 <span className="text-xs text-[var(--text-secondary)] font-normal">/ month</span></div>
-
-              <ul className="space-y-3 text-xs font-mono text-[var(--text-secondary)] border-t border-[var(--border-color)] pt-6">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>White-Label Custom Branded Portals</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Dedicated TURN Relay (100% Firewall Uptime)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Delivery Webhooks (Slack/Discord/REST)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-[var(--success)] shrink-0" />
-                  <span>Ed25519 Signed Delivery PDF Receipts</span>
-                </li>
-              </ul>
-            </div>
-
-            <Link
-              href="/dashboard"
-              className="mt-8 w-full py-3 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] font-bold text-center hover:border-[var(--accent)] transition-colors block"
-            >
-              Configure Hub
-            </Link>
-          </div>
-
         </div>
+
+        {/* CTA */}
+        <div className="text-center pt-4">
+          <Link
+            href="/send"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity glow-amber shadow-xl"
+          >
+            <Lightning className="w-5 h-5" weight="fill" />
+            Start Instant Free Transfer
+          </Link>
+        </div>
+
       </div>
     </section>
   );

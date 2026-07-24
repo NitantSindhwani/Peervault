@@ -13,6 +13,7 @@ export interface InstantOfferPayload {
   fileSize: number;
   pubKeyHex: string;
   sdp: string;
+  passphraseRequired?: boolean;
   ttlHours?: number;
   maxDownloads?: number;
   timestamp: number;

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Gauge, GitFork } from '@phosphor-icons/react';
 import { SpeedGraph } from './SpeedGraph';
+import { NodeTopologyCanvas } from './NodeTopologyCanvas';
 
 export interface TelemetryData {
   transferSpeedMb: number;
@@ -103,11 +104,14 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
             <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
             {telemetry.connectionType}
           </span>
-          <span className="px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30 font-semibold">
-            BBR: {telemetry.bbrState}
-          </span>
         </div>
       </div>
+
+      {/* Kinetic 60fps WebRTC Packet Arc Canvas */}
+      <NodeTopologyCanvas
+        speedBytesPerSec={telemetry.transferSpeedMb * 1024 * 1024}
+        rttMs={telemetry.rttMs}
+      />
 
       {/* Speed & Progress Hero Metric */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

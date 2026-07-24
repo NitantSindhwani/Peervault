@@ -377,7 +377,14 @@ export function useTransfer({
         const activeChannels = channels.dataChannels && channels.dataChannels.length > 0
           ? channels.dataChannels
           : [channels.dataChannel];
-        const targetChannel = activeChannels[chunkIndex % activeChannels.length];
+
+        const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
+        if (openChannels.length === 0) {
+          await new Promise((r) => setTimeout(r, 10));
+          continue;
+        }
+
+        const targetChannel = openChannels[chunkIndex % openChannels.length];
 
         if (!backpressure.canSend(targetChannel)) {
           await new Promise((r) => setTimeout(r, 0));
@@ -399,11 +406,15 @@ export function useTransfer({
         packet.set(new Uint8Array(header), 0);
         packet.set(new Uint8Array(buffer), 16);
 
-        targetChannel.send(packet);
-        backpressure.registerSentChunk(chunkIndex);
-
-        offset += slice.size;
-        chunkIndex++;
+        try {
+          targetChannel.send(packet);
+          backpressure.registerSentChunk(chunkIndex);
+          offset += slice.size;
+          chunkIndex++;
+        } catch (sendErr) {
+          console.warn('[Transfer] Channel send retry:', sendErr);
+          await new Promise((r) => setTimeout(r, 10));
+        }
 
         const now = Date.now();
         const timeDiff = (now - lastSampleTimeRef.current) / 1000;

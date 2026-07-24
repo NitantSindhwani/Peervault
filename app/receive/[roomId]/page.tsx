@@ -118,7 +118,11 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   };
 
   // Priority: Real Received File Name > URL Offer File Name > Fallback
-  const fileName = receivedFileName || offerPayload?.fileName || 'SharedFile';
+  let rawName = receivedFileName || offerPayload?.fileName || 'SharedFile.jpg';
+  if (!/\.[a-z0-9]{2,5}$/i.test(rawName)) {
+    rawName += '.jpg';
+  }
+  const fileName = rawName;
   const fileSizeMb = (telemetry.totalBytes ? telemetry.totalBytes / (1024 * 1024) : (offerPayload?.fileSize || 0) / (1024 * 1024)).toFixed(1);
 
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(fileName);

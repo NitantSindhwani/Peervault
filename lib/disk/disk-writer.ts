@@ -53,20 +53,26 @@ export class DiskWriter {
   }
 
   private detectMimeType() {
-    if (this.mimeType && this.mimeType !== 'application/octet-stream') return;
-
     const lower = this.fileName.toLowerCase();
-    if (/\.(mp4|webm|mov|mkv)$/i.test(lower)) {
+    if (/\.(jpg|jpeg)$/i.test(lower)) {
+      this.mimeType = 'image/jpeg';
+    } else if (/\.png$/i.test(lower)) {
+      this.mimeType = 'image/png';
+    } else if (/\.gif$/i.test(lower)) {
+      this.mimeType = 'image/gif';
+    } else if (/\.webp$/i.test(lower)) {
+      this.mimeType = 'image/webp';
+    } else if (/\.svg$/i.test(lower)) {
+      this.mimeType = 'image/svg+xml';
+    } else if (/\.(mp4|webm|mov|mkv)$/i.test(lower)) {
       this.mimeType = 'video/mp4';
     } else if (/\.(mp3|wav|ogg|m4a|flac)$/i.test(lower)) {
       this.mimeType = 'audio/mpeg';
-    } else if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(lower)) {
-      this.mimeType = 'image/png';
     } else if (/\.pdf$/i.test(lower)) {
       this.mimeType = 'application/pdf';
     } else if (/\.(txt|json|js|ts|html|css|py|md|c|cpp)$/i.test(lower)) {
       this.mimeType = 'text/plain';
-    } else {
+    } else if (!this.mimeType || this.mimeType === 'application/octet-stream') {
       this.mimeType = 'application/octet-stream';
     }
   }
@@ -77,6 +83,20 @@ export class DiskWriter {
       if (mimeType) this.mimeType = mimeType;
       this.detectMimeType();
     }
+  }
+
+  public getFileName(): string {
+    let name = this.fileName || 'SharedFile';
+    if (!/\.[a-z0-9]{2,5}$/i.test(name)) {
+      if (this.mimeType === 'image/jpeg') name += '.jpg';
+      else if (this.mimeType === 'image/png') name += '.png';
+      else if (this.mimeType === 'image/gif') name += '.gif';
+      else if (this.mimeType === 'image/webp') name += '.webp';
+      else if (this.mimeType === 'video/mp4') name += '.mp4';
+      else if (this.mimeType === 'application/pdf') name += '.pdf';
+      else if (this.mimeType === 'application/zip') name += '.zip';
+    }
+    return name;
   }
 
   public async init(): Promise<boolean> {

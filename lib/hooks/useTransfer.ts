@@ -597,8 +597,11 @@ export function useTransfer({
               let receivedBytes = 0;
               for (const chunkItem of data.chunks) {
                 const hex = chunkItem.dataHex;
-                const buffer = new Uint8Array(hex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []).buffer;
-                const payload = buffer.slice(16);
+                const bytes = new Uint8Array(Math.floor(hex.length / 2));
+                for (let i = 0; i < bytes.length; i++) {
+                  bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+                }
+                const payload = bytes.buffer.slice(16);
                 await diskWriter.writeChunk(payload, receivedBytes);
                 receivedBytes += payload.byteLength;
 
@@ -725,6 +728,9 @@ export function useTransfer({
             if (roomId) removeResumeSession(roomId);
             setState('verifying');
             const result = await diskWriterRef.current.close();
+            if (diskWriterRef.current) {
+              setReceivedFileName(diskWriterRef.current.getFileName());
+            }
             if (result?.downloadUrl) {
               setReceivedBlobUrl(result.downloadUrl);
             }

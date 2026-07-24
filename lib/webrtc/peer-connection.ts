@@ -23,23 +23,22 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:stun.relay.metered.ca:80' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:openrelay.metered.ca:80' },
   {
-    urls: 'turn:global.relay.metered.ca:80',
-    username: 'e16e6d7647db00d662886f4a',
-    credential: 'J9/9lKx3W+xPzLdG',
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelay',
+    credential: 'openrelay',
   },
   {
-    urls: 'turn:global.relay.metered.ca:443',
-    username: 'e16e6d7647db00d662886f4a',
-    credential: 'J9/9lKx3W+xPzLdG',
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelay',
+    credential: 'openrelay',
   },
   {
-    urls: 'turn:global.relay.metered.ca:443?transport=tcp',
-    username: 'e16e6d7647db00d662886f4a',
-    credential: 'J9/9lKx3W+xPzLdG',
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay',
   },
 ];
 
@@ -65,8 +64,7 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   const dataChannels: RTCDataChannel[] = [];
   for (let i = 0; i < 8; i++) {
     const ch = pc.createDataChannel(`data_${i}`, {
-      ordered: false,
-      maxPacketLifeTime: 3000,
+      ordered: true,
     });
     ch.binaryType = 'arraybuffer';
     dataChannels.push(ch);

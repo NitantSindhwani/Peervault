@@ -68,6 +68,7 @@ export function useTransfer({
   const [state, setState] = useState<TransferState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(initialRoomId || null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [receivedBlobUrl, setReceivedBlobUrl] = useState<string | null>(null);
   const [receivedFileName, setReceivedFileName] = useState<string | null>(null);
 
@@ -147,21 +148,6 @@ export function useTransfer({
 
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
 
-      // Submit Sender ICE Candidates to signaling endpoint
-      channels.pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          await fetch('/api/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              roomId: generatedRoomId,
-              action: 'submit_sender_candidate',
-              candidate: event.candidate.toJSON(),
-            }),
-          }).catch(() => {});
-        }
-      };
-
       const offerPayload = {
         fileName: file.name,
         fileSize: file.size,
@@ -173,8 +159,13 @@ export function useTransfer({
         timestamp: Date.now(),
       };
 
-      // Short 1-Liner Clean URL Room ID (e.g. /receive/pv_x7k9m2)
+      const offerHash = await createInstantOfferHash(offerPayload);
+      const generatedShareUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/receive/${generatedRoomId}#offer=${offerHash}`
+        : `/receive/${generatedRoomId}`;
+
       setRoomId(generatedRoomId);
+      setShareUrl(generatedShareUrl);
       setState('waiting_peer');
 
       // Submit offer to in-memory signaling cache for Short QR Scanning
@@ -765,6 +756,7 @@ export function useTransfer({
     state,
     errorMsg,
     roomId,
+    shareUrl,
     telemetry,
     receivedBlobUrl,
     receivedFileName,

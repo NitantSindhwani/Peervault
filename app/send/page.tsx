@@ -46,7 +46,7 @@ export default function SendPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const { state, errorMsg, roomId, telemetry, startSender } = useTransfer({
+  const { state, errorMsg, roomId, shareUrl, telemetry, startSender } = useTransfer({
     role: 'sender',
     file: selectedFile,
     passphrase,
@@ -171,9 +171,9 @@ export default function SendPage() {
   };
 
   const copyShareUrl = () => {
-    if (!roomId) return;
-    const url = `${window.location.origin}/receive/${roomId}`;
-    navigator.clipboard.writeText(url);
+    const targetUrl = shareUrl || (roomId ? `${window.location.origin}/receive/${roomId}` : '');
+    if (!targetUrl) return;
+    navigator.clipboard.writeText(targetUrl);
     sfx.playCopy();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -449,7 +449,7 @@ export default function SendPage() {
                   <input
                     type="text"
                     readOnly
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                    value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
                     className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)]"
                   />
                   <button
@@ -467,7 +467,7 @@ export default function SendPage() {
             {roomId && (
               <div className="md:col-span-4 flex justify-center border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6">
                 <QRCodeViewer
-                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                  url={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
                   size={160}
                 />
               </div>

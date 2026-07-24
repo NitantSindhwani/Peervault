@@ -46,20 +46,26 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       let payload = await parseInstantOfferHash(window.location.hash);
 
       if (!payload) {
-        try {
-          const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-          const data = await res.json();
-          if (data.offer) {
-            payload = data.offer;
-          }
-        } catch {}
+        for (let attempt = 0; attempt < 20; attempt++) {
+          try {
+            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+            const data = await res.json();
+            if (data.offer) {
+              payload = data.offer;
+              break;
+            }
+          } catch {}
+          if (!mounted) return;
+          await new Promise((r) => setTimeout(r, 500));
+        }
       }
 
       if (!mounted) return;
-      setOfferPayload(payload);
-
-      if (!payload || !payload.passphraseRequired) {
-        setIsUnlocked(true);
+      if (payload) {
+        setOfferPayload(payload);
+        if (!payload.passphraseRequired) {
+          setIsUnlocked(true);
+        }
       }
     }
     checkOffer();

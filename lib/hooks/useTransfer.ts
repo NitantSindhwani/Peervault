@@ -510,9 +510,9 @@ export function useTransfer({
       const cleanRoomId = targetRoomId.split('#')[0];
       let offerPayload = await parseInstantOfferHash(window.location.hash);
 
-      // Retry up to 30 times (15 seconds) to fetch the offer from signaling cache
+      // Retry up to 300 times (30 seconds) to fetch the offer from signaling cache
       if (!offerPayload || !offerPayload.sdp) {
-        for (let attempt = 0; attempt < 30; attempt++) {
+        for (let attempt = 0; attempt < 300; attempt++) {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
             const data = await res.json();
@@ -527,6 +527,15 @@ export function useTransfer({
 
       const fileName = offerPayload?.fileName || 'SharedFile';
       const fileSize = offerPayload?.fileSize || 0;
+
+      if (fileSize > 0) {
+        const estChunks = Math.ceil(fileSize / 262144);
+        setTelemetry((prev) => ({
+          ...prev,
+          totalBytes: fileSize,
+          totalChunks: estChunks,
+        }));
+      }
 
       // 2. Validate TTL Expiry
       if (offerPayload?.ttlHours && offerPayload.timestamp) {

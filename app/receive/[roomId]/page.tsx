@@ -46,7 +46,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       let payload = await parseInstantOfferHash(window.location.hash);
 
       if (!payload) {
-        for (let attempt = 0; attempt < 20; attempt++) {
+        for (let attempt = 0; attempt < 300; attempt++) {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
             const data = await res.json();

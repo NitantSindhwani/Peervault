@@ -49,12 +49,35 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
         for (let attempt = 0; attempt < 40; attempt++) {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-            const data = await res.json();
-            if (data.offer) {
-              payload = data.offer;
-              break;
+            if (res.ok) {
+              const data = await res.json();
+              if (data.offer) {
+                payload = data.offer;
+                break;
+              }
             }
           } catch {}
+
+          try {
+            const ntfyRes = await fetch(`https://ntfy.sh/peervault_signal_${cleanRoomId}/json?poll=1`);
+            const text = await ntfyRes.text();
+            const lines = text.trim().split('\n');
+            for (const line of lines) {
+              if (!line) continue;
+              try {
+                const msg = JSON.parse(line);
+                if (msg.message) {
+                  const p = JSON.parse(msg.message);
+                  if (p.action === 'submit_offer' && p.offer) {
+                    payload = p.offer;
+                    break;
+                  }
+                }
+              } catch {}
+            }
+            if (payload) break;
+          } catch {}
+
           if (!mounted) return;
           await new Promise((r) => setTimeout(r, 800));
         }

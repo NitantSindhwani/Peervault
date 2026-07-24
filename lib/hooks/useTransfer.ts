@@ -264,21 +264,23 @@ export function useTransfer({
       signalPollerRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
-          const data = await res.json();
+          if (res.ok) {
+            const data = await res.json();
 
-          if (data.answer && channels.pc.signalingState !== 'stable') {
-            await channels.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-            setState('negotiating');
-          }
+            if (data.answer && channels.pc.signalingState !== 'stable') {
+              await channels.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+              setState('negotiating');
+            }
 
-          if (channels.pc.remoteDescription && data.receiverCandidates && data.receiverCandidates.length > 0) {
-            for (const cand of data.receiverCandidates) {
-              const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
-              if (!processedReceiverCandidates.has(key)) {
-                processedReceiverCandidates.add(key);
-                try {
-                  await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch {}
+            if (channels.pc.remoteDescription && data.receiverCandidates && data.receiverCandidates.length > 0) {
+              for (const cand of data.receiverCandidates) {
+                const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
+                if (!processedReceiverCandidates.has(key)) {
+                  processedReceiverCandidates.add(key);
+                  try {
+                    await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch {}
+                }
               }
             }
           }
@@ -712,15 +714,17 @@ export function useTransfer({
         signalPollerRef.current = setInterval(async () => {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-            const data = await res.json();
-            if (pc.remoteDescription && data.senderCandidates && data.senderCandidates.length > 0) {
-              for (const cand of data.senderCandidates) {
-                const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
-                if (!processedSenderCandidates.has(key)) {
-                  processedSenderCandidates.add(key);
-                  try {
-                    await pc.addIceCandidate(new RTCIceCandidate(cand));
-                  } catch {}
+            if (res.ok) {
+              const data = await res.json();
+              if (pc.remoteDescription && data.senderCandidates && data.senderCandidates.length > 0) {
+                for (const cand of data.senderCandidates) {
+                  const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
+                  if (!processedSenderCandidates.has(key)) {
+                    processedSenderCandidates.add(key);
+                    try {
+                      await pc.addIceCandidate(new RTCIceCandidate(cand));
+                    } catch {}
+                  }
                 }
               }
             }

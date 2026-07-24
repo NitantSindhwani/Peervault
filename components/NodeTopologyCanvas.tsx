@@ -11,8 +11,8 @@ interface Particle {
 }
 
 export function NodeTopologyCanvas({
-  speedBytesPerSec = 125184000,
-  rttMs = 1.9,
+  speedBytesPerSec = 0,
+  rttMs = 0,
   active = true,
 }: {
   speedBytesPerSec?: number;
@@ -170,7 +170,7 @@ export function NodeTopologyCanvas({
       <div className="flex items-center justify-between font-mono text-xs text-[var(--accent)] mb-2 px-2">
         <span className="flex items-center gap-2 font-bold uppercase tracking-wider">
           <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
-          Kinetic WebRTC Topology Topology
+          Kinetic WebRTC Topology
         </span>
         <span className="text-[var(--text-secondary)] text-[10px]">60fps Canvas Render</span>
       </div>

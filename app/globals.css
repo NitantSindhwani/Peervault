@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: oklch(12% 0.01 240);
+    --bg-surface: oklch(17% 0.015 240);
+    --bg-surface-hover: oklch(21% 0.02 240);
+    --border-color: oklch(28% 0.02 240);
+    --accent: oklch(72% 0.18 65);
+    --accent-dim: oklch(55% 0.14 65);
+    --text-primary: oklch(96% 0.005 240);
+    --text-secondary: oklch(62% 0.02 240);
+    --success: oklch(70% 0.18 145);
+    --error: oklch(65% 0.22 20);
+    --warning: oklch(78% 0.16 90);
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}
+
+/* Dark Tech Grid Accent */
+.bg-grid-pattern {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+/* Glow Utilities */
+.glow-amber {
+  box-shadow: 0 0 25px -5px rgba(234, 140, 40, 0.35);
+}
+
+.glow-amber-lg {
+  box-shadow: 0 0 50px -10px rgba(234, 140, 40, 0.45);
+}
+
+/* Scanline Effect */
+.scanline {
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0),
+    rgba(255,255,255,0) 50%,
+    rgba(0, 0, 0, 0.3) 50%,
+    rgba(0, 0, 0, 0.3)
+  );
+  background-size: 100% 4px;
+}

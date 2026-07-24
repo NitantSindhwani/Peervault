@@ -172,22 +172,22 @@ export function LandingHero() {
             </div>
 
             {/* Headline */}
-            <h1 data-hero-title className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tighter leading-none text-[var(--text-primary)] font-display">
-              Instant Direct <br />
+            <h1 data-hero-title className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tighter leading-tight text-[var(--text-primary)] font-display">
+              Instant Direct <br className="hidden sm:inline" />
               <span className="text-[var(--accent)]">P2P Sharing</span>
             </h1>
 
             {/* Subtext */}
-            <p data-hero-sub className="text-base sm:text-lg text-[var(--text-secondary)] leading-relaxed max-w-[52ch]">
+            <p data-hero-sub className="text-sm sm:text-lg text-[var(--text-secondary)] leading-relaxed max-w-[52ch]">
               No file size limits. No server uploads. Files stream directly between browsers over end-to-end encrypted peer-to-peer channels.
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-4 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 pt-2">
               <Link
                 data-hero-cta
                 href="/send"
-                className="px-6 py-3.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity glow-amber flex items-center gap-2 cursor-pointer"
+                className="px-6 py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg"
               >
                 <Lightning className="w-5 h-5" weight="fill" />
                 Share File Instantly
@@ -196,7 +196,7 @@ export function LandingHero() {
               <a
                 data-hero-cta
                 href="#architecture"
-                className="px-5 py-3.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors flex items-center gap-2"
+                className="px-5 py-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors flex items-center justify-center gap-2"
               >
                 <span>How It Works</span>
                 <ArrowRight className="w-4 h-4 text-[var(--text-secondary)]" />
@@ -204,18 +204,18 @@ export function LandingHero() {
             </div>
 
             {/* Tech Badges Row */}
-            <div className="pt-6 grid grid-cols-3 gap-4 border-t border-[var(--border-color)] text-xs font-mono text-[var(--text-secondary)]">
-              <div>
+            <div className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 border-t border-[var(--border-color)] text-xs font-mono text-[var(--text-secondary)]">
+              <div className="bg-[var(--bg-surface)]/50 p-2.5 rounded-lg border border-[var(--border-color)] sm:border-0 sm:p-0">
                 <span className="text-[var(--text-primary)] font-bold block">Instant Sharing</span>
-                <span>Zero Upload Delay</span>
+                <span className="text-[11px]">Zero Upload Delay</span>
               </div>
-              <div>
+              <div className="bg-[var(--bg-surface)]/50 p-2.5 rounded-lg border border-[var(--border-color)] sm:border-0 sm:p-0">
                 <span className="text-[var(--accent)] font-bold block">100% Private</span>
-                <span>End-to-End Encrypted</span>
+                <span className="text-[11px]">End-to-End Encrypted</span>
               </div>
-              <div>
+              <div className="bg-[var(--bg-surface)]/50 p-2.5 rounded-lg border border-[var(--border-color)] sm:border-0 sm:p-0">
                 <span className="text-[var(--success)] font-bold block">Zero Cloud Cost</span>
-                <span>Direct Peer-to-Peer</span>
+                <span className="text-[11px]">Direct Peer-to-Peer</span>
               </div>
             </div>
 

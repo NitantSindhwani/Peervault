@@ -1,181 +1,149 @@
 'use client';
 
 import { useState } from 'react';
-import { Cpu, ShieldCheck, ShareNetwork, LockKey, ArrowRight, Database } from '@phosphor-icons/react';
+import Link from 'next/link';
+import {
+  FileArrowUp,
+  ShareNetwork,
+  DownloadSimple,
+  CheckCircle,
+  Lightning,
+  ShieldCheck,
+  ArrowRight,
+} from '@phosphor-icons/react';
 
 export function ArchitectureDiagram() {
-  const [activeNode, setActiveNode] = useState<string>('sender');
+  const [activeStep, setActiveStep] = useState<number>(1);
 
-  const nodeDetails: Record<string, { title: string; desc: string; specs: string[] }> = {
-    sender: {
-      title: 'Sender Browser Node',
-      desc: 'Off-thread multithreaded WASM/WebCrypto pipeline that slices local files into 64KB ArrayBuffers, encrypts with AES-256-GCM, and computes BLAKE3 Merkle hashes.',
-      specs: [
-        'Custom BBR-Style Congestion Control (#01)',
-        'Off-Thread WASM + SIMD Engine (#02)',
-        'Store-and-Forward Ephemeral Chunks (#03)',
-        'Merkle Tree Integrity Verification (#06)',
+  const steps = [
+    {
+      step: 1,
+      icon: <FileArrowUp className="w-6 h-6 text-[var(--accent)]" weight="bold" />,
+      title: 'Pick Any File or Folder',
+      subtitle: 'Zero Upload Waiting',
+      desc: 'Select any file or game folder of any size. PeerVault creates an instant share link in 0.0 seconds without uploading your file to any cloud server.',
+      tips: [
+        'No file size limits (Send 10MB or 500GB+)',
+        'Your file stays 100% on your device disk',
+        'Optional password protection lock available',
       ],
     },
-    signaling: {
-      title: 'Supabase Realtime Signaling Spine',
-      desc: 'Zero-knowledge signaling channel running over WebSockets. Relays compressed SDP offers/answers and OPAQUE PAKE credentials without inspecting payload content.',
-      specs: [
-        'OPAQUE PAKE Mutual Auth Protocol (#04)',
-        'Peer Mesh Signaling Relay Topology (#05)',
-        'Compressed SDP via CompressionStream (#10)',
-        'Supabase Edge Function Rate Limiter (#15)',
+    {
+      step: 2,
+      icon: <ShareNetwork className="w-6 h-6 text-[var(--accent)]" weight="bold" />,
+      title: 'Send Link or Scan QR',
+      subtitle: 'Instant Recipient Access',
+      desc: 'Copy your instant share link or let a friend scan the high-contrast QR code using their phone camera. No account or app download needed.',
+      tips: [
+        'Works on iPhones, Android, Windows, & Mac',
+        '0.1-second instant phone camera QR scan',
+        'Send via WhatsApp, Discord, Email, or Slack',
       ],
     },
-    recipient: {
-      title: 'Recipient Browser Node',
-      desc: 'Receives encrypted ArrayBuffers over WebRTC DataChannel, verifies leaf hashes against Merkle root, and streams directly to disk using FileSystemAccessAPI.',
-      specs: [
-        'Sliding-Window Backpressure Control (#07)',
-        'Zero-Copy FileSystemWritableFileStream (#11)',
-        'Network Topology Auto-Fallback State Machine (#12)',
-        'Dynamic Network Throttling & Adaptive Sizing (#13)',
+    {
+      step: 3,
+      icon: <DownloadSimple className="w-6 h-6 text-[var(--success)]" weight="bold" />,
+      title: 'Direct Fast Download',
+      subtitle: 'Bit-for-Bit Exact Copy',
+      desc: 'The moment your recipient opens the link, data streams directly browser-to-browser at maximum network speed with 100% privacy.',
+      tips: [
+        'Up to 1,000 Mbps speed on same Wi-Fi / LAN',
+        'Executable files & 4K movies run natively',
+        'Automatic resume if connection drops',
       ],
     },
-  };
+  ];
 
   return (
     <section id="architecture" className="py-20 bg-[var(--bg-main)] border-b border-[var(--border-color)] bg-grid-pattern">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         
         {/* Header */}
-        <div className="space-y-3">
+        <div className="space-y-3 text-center sm:text-left">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--accent)]">
-            <ShareNetwork className="w-3.5 h-3.5" />
-            <span>Interactive DataFlow Matrix</span>
+            <Lightning className="w-3.5 h-3.5" weight="fill" />
+            <span>How PeerVault Works</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)]">
-            15-Point Technical Topology
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[var(--text-primary)] font-display">
+            3 Simple Steps to Share Anything
           </h2>
-          <p className="text-sm text-[var(--text-secondary)] max-w-[65ch]">
-            Click any node in the data path below to inspect its cryptographic and transport specifications.
+          <p className="text-sm text-[var(--text-secondary)] font-mono max-w-[65ch]">
+            No cloud uploads, no file size limits, and no account required. Here is how easy it is to send files to anyone.
           </p>
         </div>
 
-        {/* Matrix Pipeline Interactive Visualizer */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* Left 8 Cols: Interactive Diagram */}
-          <div className="lg:col-span-8 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 shadow-xl space-y-8">
-            
-            {/* Top Row: Signaling Engine Spine */}
+        {/* 3 Step Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {steps.map((item) => (
             <div
-              onClick={() => setActiveNode('signaling')}
-              className={`cursor-pointer p-5 rounded-xl border transition-all ${
-                activeNode === 'signaling'
-                  ? 'border-[var(--accent)] bg-[var(--bg-main)] glow-amber'
-                  : 'border-[var(--border-color)] bg-[var(--bg-main)]/60 hover:border-[var(--text-secondary)]'
+              key={item.step}
+              onClick={() => setActiveStep(item.step)}
+              className={`cursor-pointer rounded-2xl p-6 border transition-all space-y-5 flex flex-col justify-between ${
+                activeStep === item.step
+                  ? 'bg-[var(--bg-surface)] border-[var(--accent)] glow-amber shadow-2xl scale-[1.01]'
+                  : 'bg-[var(--bg-surface)]/60 border-[var(--border-color)] hover:border-[var(--text-secondary)]'
               }`}
             >
-              <div className="flex items-center justify-between font-mono text-xs mb-2">
-                <span className="text-[var(--accent)] font-bold flex items-center gap-2">
-                  <Database className="w-4 h-4" />
-                  Supabase Realtime Signaling Engine
-                </span>
-                <span className="text-[var(--text-secondary)]">OPAQUE PAKE Relay (#04)</span>
-              </div>
-              <p className="text-xs text-[var(--text-secondary)] font-mono">
-                Relays compressed SDP offers/answers & ICE candidates over WebSockets with zero plain-text key exposure.
-              </p>
-            </div>
-
-            {/* Middle Connection Flow */}
-            <div className="flex items-center justify-center gap-4 py-2 font-mono text-xs text-[var(--accent)]">
-              <span className="h-px bg-[var(--border-color)] flex-1" />
-              <span className="px-3 py-1 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center gap-1.5">
-                <ShareNetwork className="w-3.5 h-3.5" />
-                Direct WebRTC P2P DataChannel Pipeline (SCTP / UDP)
-              </span>
-              <span className="h-px bg-[var(--border-color)] flex-1" />
-            </div>
-
-            {/* Bottom Row: Sender & Recipient Nodes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              
-              {/* Sender Node */}
-              <div
-                onClick={() => setActiveNode('sender')}
-                className={`cursor-pointer p-5 rounded-xl border transition-all ${
-                  activeNode === 'sender'
-                    ? 'border-[var(--accent)] bg-[var(--bg-main)] glow-amber'
-                    : 'border-[var(--border-color)] bg-[var(--bg-main)]/60 hover:border-[var(--text-secondary)]'
-                }`}
-              >
-                <div className="flex items-center justify-between font-mono text-xs mb-2">
-                  <span className="text-[var(--text-primary)] font-bold flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-[var(--accent)]" />
-                    Sender Browser Node
+              <div className="space-y-4">
+                {/* Step Badge & Icon */}
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center shadow-inner">
+                    {item.icon}
+                  </div>
+                  <span className="font-mono text-xs text-[var(--accent)] font-bold px-2.5 py-1 rounded-full bg-[var(--accent)]/10 border border-[var(--accent)]/30">
+                    Step 0{item.step}
                   </span>
-                  <span className="text-[var(--success)] text-[10px]">64KB Chunk Slicer</span>
                 </div>
-                <ul className="space-y-1 text-[11px] font-mono text-[var(--text-secondary)] mt-3">
-                  <li>• Custom BBR Pacing (#01)</li>
-                  <li>• WASM + SIMD Engine (#02)</li>
-                  <li>• Ephemeral Staging (#03)</li>
-                  <li>• Merkle Tree Hashing (#06)</li>
-                </ul>
-              </div>
 
-              {/* Recipient Node */}
-              <div
-                onClick={() => setActiveNode('recipient')}
-                className={`cursor-pointer p-5 rounded-xl border transition-all ${
-                  activeNode === 'recipient'
-                    ? 'border-[var(--accent)] bg-[var(--bg-main)] glow-amber'
-                    : 'border-[var(--border-color)] bg-[var(--bg-main)]/60 hover:border-[var(--text-secondary)]'
-                }`}
-              >
-                <div className="flex items-center justify-between font-mono text-xs mb-2">
-                  <span className="text-[var(--text-primary)] font-bold flex items-center gap-2">
-                    <LockKey className="w-4 h-4 text-[var(--success)]" />
-                    Recipient Browser Node
+                <div className="space-y-1 font-mono">
+                  <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider block">
+                    {item.subtitle}
                   </span>
-                  <span className="text-[var(--accent)] text-[10px]">Disk Streamer</span>
+                  <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed pt-1">
+                    {item.desc}
+                  </p>
                 </div>
-                <ul className="space-y-1 text-[11px] font-mono text-[var(--text-secondary)] mt-3">
-                  <li>• Backpressure Control (#07)</li>
-                  <li>• FileSystem Access Stream (#11)</li>
-                  <li>• Connection Fallback (#12)</li>
-                  <li>• Adaptive Chunk Sizing (#13)</li>
-                </ul>
               </div>
 
-            </div>
-
-          </div>
-
-          {/* Right 4 Cols: Active Node Specifications */}
-          <div className="lg:col-span-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 space-y-6">
-            <div className="border-b border-[var(--border-color)] pb-4 space-y-1">
-              <span className="text-[10px] font-mono text-[var(--accent)] uppercase tracking-wider">Node Inspector</span>
-              <h3 className="text-xl font-bold text-[var(--text-primary)]">
-                {nodeDetails[activeNode].title}
-              </h3>
-            </div>
-
-            <p className="text-xs text-[var(--text-secondary)] leading-relaxed font-mono">
-              {nodeDetails[activeNode].desc}
-            </p>
-
-            <div className="space-y-3 pt-2">
-              <h4 className="font-mono text-xs uppercase tracking-wider text-[var(--text-primary)]">Active Subsystems</h4>
-              <div className="space-y-2">
-                {nodeDetails[activeNode].specs.map((spec, i) => (
-                  <div key={i} className="bg-[var(--bg-main)] p-2.5 rounded-lg border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] flex items-center gap-2">
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                    <span>{spec}</span>
+              {/* Useful Highlights List */}
+              <div className="pt-4 border-t border-[var(--border-color)] space-y-2 font-mono text-[11px]">
+                {item.tips.map((tip, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-[var(--text-primary)]">
+                    <CheckCircle className="w-3.5 h-3.5 text-[var(--success)] shrink-0" weight="fill" />
+                    <span>{tip}</span>
                   </div>
                 ))}
               </div>
+
             </div>
+          ))}
+        </div>
+
+        {/* Bottom Callout CTA */}
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl font-mono">
+          <div className="space-y-1 text-center sm:text-left">
+            <h4 className="text-lg font-bold text-[var(--text-primary)] font-display flex items-center gap-2 justify-center sm:justify-start">
+              <ShieldCheck className="w-5 h-5 text-[var(--success)]" />
+              Ready to Send Your First File?
+            </h4>
+            <p className="text-xs text-[var(--text-secondary)]">
+              No registration needed. Select any file or folder and generate an instant link now.
+            </p>
           </div>
 
+          <Link
+            href="/send"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-bold text-xs hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-lg"
+          >
+            <Lightning className="w-4 h-4" weight="fill" />
+            <span>Start Instant Sharing</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
+
       </div>
     </section>
   );

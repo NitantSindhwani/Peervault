@@ -2,7 +2,8 @@
  * Hardened PeerVault Cyber-Acoustics Sound Engine
  * 
  * Native Web Audio API synthesizer for zero-latency, zero-asset acoustic feedback.
- * Synthesizes 4 distinct sound signatures directly via oscillators:
+ * Synthesizes distinct sound signatures directly via oscillators:
+ * - Mute / Unmute Feedback Tones
  * - Hover Click (800Hz micro-tone)
  * - Drop Impact (120Hz sub-bass thump)
  * - Transfer Ambient Hum (432Hz sine wave)
@@ -34,11 +35,44 @@ class SoundEngine {
   }
 
   public toggleMute(): boolean {
+    // Play acoustic feedback tone BEFORE setting muted state
+    if (!this.muted) {
+      // About to MUTE -> Play crisp Mute Tone (descending pitch 600Hz -> 250Hz)
+      this.playTone(600, 250, 0.05);
+    } else {
+      // About to UNMUTE -> Play crisp Unmute Tone (ascending pitch 250Hz -> 600Hz)
+      this.playTone(250, 600, 0.05);
+    }
+
     this.muted = !this.muted;
+
     if (this.muted && this.humGain) {
       this.humGain.gain.setTargetAtTime(0, this.ctx?.currentTime || 0, 0.05);
     }
     return this.muted;
+  }
+
+  private playTone(startFreq: number, endFreq: number, duration: number) {
+    const ctx = this.initCtx();
+    if (!ctx) return;
+
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + duration);
+
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + duration + 0.01);
+    } catch {}
   }
 
   /**
@@ -46,24 +80,7 @@ class SoundEngine {
    */
   public playHoverClick() {
     if (this.muted) return;
-    const ctx = this.initCtx();
-    if (!ctx) return;
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.03);
-
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.035);
+    this.playTone(800, 400, 0.03);
   }
 
   /**
@@ -71,24 +88,7 @@ class SoundEngine {
    */
   public playDropImpact() {
     if (this.muted) return;
-    const ctx = this.initCtx();
-    if (!ctx) return;
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(140, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.15);
-
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.16);
+    this.playTone(140, 40, 0.15);
   }
 
   /**
@@ -109,7 +109,7 @@ class SoundEngine {
     this.humGain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.2);
 
     this.humOsc.connect(this.humGain);
-    this.humGain.connect(ctx.destination);
+    this.humOsc.connect(ctx.destination);
 
     this.humOsc.start();
   }

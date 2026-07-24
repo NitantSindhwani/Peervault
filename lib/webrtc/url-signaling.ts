@@ -5,7 +5,7 @@
  * the URL Hash Fragment (#offer=...) using browser CompressionStream (gzip).
  * 
  * - Time to generate share link: < 3ms (100% client-side, zero HTTP requests)
- * - Server infrastructure required: 0 (Zero Supabase, Zero DB, 100% Free)
+ * - Server infrastructure required: 0 (Zero DB, 100% Free Serverless)
  */
 
 export interface InstantOfferPayload {

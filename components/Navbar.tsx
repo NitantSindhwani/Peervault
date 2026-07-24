@@ -19,14 +19,14 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-9 h-9 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] flex items-center justify-center group-hover:border-[var(--accent)] transition-colors">
+          <div className="w-9 h-9 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] flex items-center justify-center group-hover:border-[var(--accent)] transition-colors shadow-md">
             <LockKey className="w-5 h-5 text-[var(--accent)]" weight="bold" />
           </div>
           <div className="flex flex-col">
             <span className="font-mono text-base font-bold tracking-tight text-[var(--text-primary)] font-display">
               PeerVault<span className="text-[var(--accent)]">.io</span>
             </span>
-            <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-wider">
+            <span className="text-[9px] sm:text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-wider">
               Zero-Knowledge P2P
             </span>
           </div>
@@ -36,9 +36,9 @@ export function Navbar() {
         <nav className="hidden md:flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-lg border border-[var(--border-color)]">
           <Link
             href="/send"
-            className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
               isActive('/send')
-                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-semibold'
+                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold shadow'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
@@ -48,9 +48,9 @@ export function Navbar() {
 
           <Link
             href="/clip"
-            className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
               isActive('/clip')
-                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-semibold'
+                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold shadow'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
@@ -60,25 +60,24 @@ export function Navbar() {
 
           <Link
             href="/dashboard"
-            className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
               isActive('/dashboard')
-                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-semibold'
+                ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold shadow'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             <ChartLineUp className="w-3.5 h-3.5" weight="bold" />
-            Telemetry Node
+            Dashboard
           </Link>
         </nav>
 
-        {/* System Integrity Badge & CTAs */}
-        <div className="flex items-center gap-3">
+        {/* Action Controls */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => {
               setIsMuted(soundEngine.toggleMute());
-              soundEngine.playHoverClick();
             }}
-            className="p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+            className="p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors cursor-pointer shadow"
             title={isMuted ? 'Unmute Audio Feedback' : 'Mute Audio Feedback'}
           >
             {isMuted ? <SpeakerSimpleSlash className="w-4 h-4 text-red-400" /> : <SpeakerHigh className="w-4 h-4 text-[var(--accent)]" />}
@@ -86,19 +85,22 @@ export function Navbar() {
 
           <Link
             href="/send"
-            className="hidden sm:flex px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-semibold hover:opacity-90 transition-opacity glow-amber items-center gap-1.5 cursor-pointer"
+            className="hidden sm:flex px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 transition-opacity glow-amber items-center gap-1.5 cursor-pointer shadow-md"
           >
             <Lightning className="w-4 h-4" weight="fill" />
-            Quick Transfer
+            Quick Send
           </Link>
 
           {/* Mobile Hamburger Trigger */}
           <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] cursor-pointer"
+            onClick={() => {
+              soundEngine.playHoverClick();
+              setMobileOpen(!mobileOpen);
+            }}
+            className="md:hidden p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] cursor-pointer shadow"
             aria-label="Toggle Navigation Menu"
           >
-            {mobileOpen ? <X className="w-5 h-5" /> : <List className="w-5 h-5" />}
+            {mobileOpen ? <X className="w-5 h-5 text-[var(--accent)]" /> : <List className="w-5 h-5" />}
           </button>
         </div>
       </div>
@@ -111,33 +113,52 @@ export function Navbar() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
-            className="md:hidden border-b border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-4 space-y-3 font-mono text-xs overflow-hidden"
+            className="md:hidden border-b border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-5 space-y-3 font-mono text-xs overflow-hidden shadow-2xl"
           >
             <Link
               href="/send"
               onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--bg-main)] text-[var(--text-primary)] font-semibold"
+              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                isActive('/send')
+                  ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold border-[var(--accent)]'
+                  : 'bg-[var(--bg-main)] border-[var(--border-color)] text-[var(--text-primary)] font-semibold'
+              }`}
             >
-              <ShareNetwork className="w-4 h-4 text-[var(--accent)]" />
-              Send File
+              <span className="flex items-center gap-2.5">
+                <ShareNetwork className="w-4 h-4" weight="bold" />
+                Send File / Folder
+              </span>
+              <Lightning className="w-4 h-4" weight="fill" />
             </Link>
 
             <Link
               href="/clip"
               onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--bg-main)] text-[var(--text-primary)] font-semibold"
+              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                isActive('/clip')
+                  ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold border-[var(--accent)]'
+                  : 'bg-[var(--bg-main)] border-[var(--border-color)] text-[var(--text-primary)] font-semibold'
+              }`}
             >
-              <Copy className="w-4 h-4 text-[var(--accent)]" />
-              ClipVault P2P Clipboard
+              <span className="flex items-center gap-2.5">
+                <Copy className="w-4 h-4" weight="bold" />
+                ClipVault Clipboard
+              </span>
             </Link>
 
             <Link
               href="/dashboard"
               onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-2 p-2.5 rounded-lg bg-[var(--bg-main)] text-[var(--text-primary)] font-semibold"
+              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                isActive('/dashboard')
+                  ? 'bg-[var(--accent)] text-[var(--bg-main)] font-bold border-[var(--accent)]'
+                  : 'bg-[var(--bg-main)] border-[var(--border-color)] text-[var(--text-primary)] font-semibold'
+              }`}
             >
-              <ChartLineUp className="w-4 h-4 text-[var(--accent)]" />
-              Telemetry Node & History
+              <span className="flex items-center gap-2.5">
+                <ChartLineUp className="w-4 h-4" weight="bold" />
+                My Transfer Dashboard
+              </span>
             </Link>
           </motion.div>
         )}

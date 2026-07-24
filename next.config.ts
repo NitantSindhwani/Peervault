@@ -13,9 +13,10 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-      "connect-src 'self' wss://*.supabase.co https://*.supabase.co https://stun.l.google.com",
+      "connect-src 'self' https://stun.l.google.com",
       "worker-src 'self' blob:",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
     ].join("; "),

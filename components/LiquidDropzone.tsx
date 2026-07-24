@@ -136,13 +136,13 @@ export function LiquidDropzone({ onFileSelect, onFolderSelect }: LiquidDropzoneP
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-4 pt-2 font-mono text-xs">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4 pt-2 font-mono text-xs">
           <button
             onClick={() => {
               soundEngine.playHoverClick();
               fileInputRef.current?.click();
             }}
-            className="px-6 py-3 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-bold hover:opacity-90 transition-opacity glow-amber flex items-center gap-2 cursor-pointer shadow-lg"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg"
           >
             <UploadSimple className="w-4 h-4" weight="bold" />
             Browse File
@@ -154,10 +154,10 @@ export function LiquidDropzone({ onFileSelect, onFolderSelect }: LiquidDropzoneP
                 soundEngine.playHoverClick();
                 folderInputRef.current?.click();
               }}
-              className="px-6 py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] font-bold hover:border-[var(--accent)] transition-colors flex items-center gap-2 cursor-pointer shadow-lg"
+              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] font-bold hover:border-[var(--accent)] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg"
             >
               <Folder className="w-4 h-4 text-[var(--accent)]" weight="bold" />
-              Select Directory / Folder
+              Select Folder
             </button>
           )}
         </div>

@@ -12,6 +12,9 @@ import {
   Play,
   Image as ImageIcon,
   MusicNotes,
+  Lightning,
+  Clock,
+  ArrowRight,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
@@ -26,8 +29,6 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attestation, setAttestation] = useState<WebAuthnAttestationResult | null>(null);
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
-
-  // Inline Media Streaming State
   const [mediaBlobUrl, setMediaBlobUrl] = useState<string | null>(null);
 
   const { state, errorMsg, telemetry, startReceiver } = useTransfer({
@@ -96,6 +97,10 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   };
 
   const fileName = offerPayload?.fileName || 'Dataset.bin';
+  const fileSizeMb = offerPayload?.fileSize
+    ? (offerPayload.fileSize / (1024 * 1024)).toFixed(1)
+    : '0.0';
+
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(fileName);
   const isAudio = /\.(mp3|wav|ogg|m4a)$/i.test(fileName);
   const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(fileName);
@@ -105,60 +110,60 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const isError = state === 'error';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-12 font-mono">
       
-      {/* Header */}
-      <div className="space-y-2">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--success)]">
-          <DownloadSimple className="w-3.5 h-3.5" />
-          <span>Recipient Node • {fileName}</span>
+      {/* Responsive Header */}
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs text-[var(--success)] font-bold">
+          <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
+          <span>Direct P2P Stream • {fileSizeMb} MB</span>
         </div>
-        <h1 className="text-4xl font-bold tracking-tight text-[var(--text-primary)] font-display">
-          Incoming P2P Data Stream
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[var(--text-primary)] font-display break-words">
+          {fileName}
         </h1>
-        <p className="text-sm text-[var(--text-secondary)] font-mono">
-          Direct device-to-device streaming with BLAKE3 Merkle integrity verification.
+        <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+          Direct browser-to-browser stream with BLAKE3 Merkle integrity checks & zero server storage.
         </p>
       </div>
 
       {isError ? (
-        /* Self-Destruct / Expiration Error View */
-        <div className="max-w-xl mx-auto bg-[var(--bg-surface)] border border-red-500/40 rounded-2xl p-8 space-y-6 text-center shadow-2xl">
-          <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
+        /* Room Error / Expired View */
+        <div className="max-w-xl mx-auto bg-[var(--bg-surface)] border border-red-500/40 rounded-2xl p-6 sm:p-8 space-y-6 text-center shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto">
             <Warning className="w-8 h-8" weight="bold" />
           </div>
-          <div className="space-y-2 font-mono">
-            <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">Room Unavailable or Expired</h3>
-            <p className="text-xs text-red-400">
-              {errorMsg || 'This transfer room has expired or reached its maximum download limit.'}
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">Room Expired or Unavailable</h3>
+            <p className="text-xs text-red-400 leading-relaxed">
+              {errorMsg || 'This transfer room has reached its maximum download limit or TTL expiration.'}
             </p>
           </div>
         </div>
       ) : !isUnlocked ? (
-        /* Password Verification Card — ONLY SHOWN IF SENDER SET A PASSWORD */
-        <div className="max-w-xl mx-auto bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-8 space-y-6 shadow-2xl">
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center text-[var(--accent)] mx-auto">
-              <LockKey className="w-6 h-6" weight="bold" />
+        /* Password Vault Unlock Screen */
+        <div className="max-w-md mx-auto bg-[var(--bg-surface)] border border-[var(--accent)]/40 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl glow-amber">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center text-[var(--accent)] mx-auto shadow-inner">
+              <LockKey className="w-8 h-8" weight="bold" />
             </div>
-            <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">Password Protected Transfer</h3>
-            <p className="text-xs text-[var(--text-secondary)] font-mono">
-              The sender protected this transfer with a password lock. Enter password to decrypt.
+            <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">Password Protected Stream</h3>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              The sender locked this file with a password. Enter password to decrypt and join stream.
             </p>
           </div>
 
           <div className="space-y-4">
             <input
               type="password"
-              placeholder="Enter transfer password"
+              placeholder="Enter transfer password..."
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
             />
 
             <button
               onClick={unlockRoom}
-              className="w-full py-3.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg text-sm"
             >
               <ShieldCheck className="w-5 h-5" weight="fill" />
               Decrypt & Join Stream
@@ -166,53 +171,63 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           </div>
         </div>
       ) : !isCompleted ? (
-        /* Unlocked / Active Streaming View */
+        /* Active Stream Download View */
         <div className="space-y-8">
           
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 flex flex-wrap items-center justify-between gap-6">
-            <div className="space-y-1 font-mono">
-              <span className="text-xs text-[var(--success)] font-bold uppercase tracking-wider">
-                Status: {state.toUpperCase()}
-              </span>
-              <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">
-                Receiving Direct Stream: {fileName}
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[var(--success)] animate-pulse" />
+                <span className="text-xs text-[var(--success)] font-bold uppercase tracking-wider">
+                  Status: {state.toUpperCase()}
+                </span>
+              </div>
+              <h3 className="text-xl font-bold text-[var(--text-primary)] font-display break-all">
+                {fileName}
               </h3>
               <p className="text-xs text-[var(--text-secondary)]">
-                Disk Assembly Mode: Tier 1 (FileSystemAccessAPI WritableStream)
+                Assembly Mode: File System Access API (Native SSD Writer)
               </p>
+            </div>
+
+            <div className="px-4 py-2 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] text-xs text-[var(--accent)] font-bold self-stretch sm:self-auto text-center">
+              {telemetry.progressPercent}% Received
             </div>
           </div>
 
-          {/* Active Telemetry Dashboard */}
-          <TelemetryDashboard mock={false} />
+          {/* Active Live Telemetry & Kinetic Topology */}
+          <TelemetryDashboard mock={false} liveData={telemetry} />
 
         </div>
       ) : (
-        /* Download / Streaming Completed View */
+        /* Transfer Completed Success Screen */
         <div className="max-w-3xl mx-auto space-y-6">
-          <div className="bg-[var(--bg-surface)] border border-[var(--success)]/40 rounded-2xl p-8 space-y-6 text-center shadow-2xl">
-            <div className="w-16 h-16 rounded-full bg-[var(--success)]/10 text-[var(--success)] flex items-center justify-center mx-auto border border-[var(--success)]/30">
-              <CheckCircle className="w-10 h-10" weight="fill" />
+          <div className="bg-[var(--bg-surface)] border border-[var(--success)]/50 rounded-2xl p-6 sm:p-10 space-y-6 text-center shadow-2xl">
+            
+            <div className="w-20 h-20 rounded-full bg-[var(--success)]/10 text-[var(--success)] flex items-center justify-center mx-auto border border-[var(--success)]/40 shadow-lg">
+              <CheckCircle className="w-12 h-12" weight="fill" />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-[var(--text-primary)] font-display">File Transfer Complete!</h2>
-              <p className="text-xs font-mono text-[var(--text-secondary)]">
-                {fileName} • All leaf chunks verified against Merkle Root checksum.
+              <h2 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] font-display">
+                File Stream Complete!
+              </h2>
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-md mx-auto">
+                <strong>{fileName}</strong> has been verified with 100% BLAKE3 Merkle integrity checks and saved to your device.
               </p>
             </div>
 
-            {/* INLINE MEDIA STREAMING PLAYER / VIEWER */}
+            {/* Rich Cyberpunk Media Player */}
             {isMedia && (
-              <div className="bg-[var(--bg-main)] p-4 rounded-xl border border-[var(--border-color)] space-y-3">
-                <div className="flex items-center justify-between text-xs font-mono text-[var(--accent)] font-bold border-b border-[var(--border-color)] pb-2">
-                  <span className="flex items-center gap-1.5">
+              <div className="bg-[var(--bg-main)] p-4 rounded-2xl border border-[var(--border-color)] space-y-3 text-left">
+                <div className="flex items-center justify-between text-xs text-[var(--accent)] font-bold border-b border-[var(--border-color)] pb-2">
+                  <span className="flex items-center gap-2">
                     {isVideo && <Play className="w-4 h-4" />}
                     {isAudio && <MusicNotes className="w-4 h-4" />}
                     {isImage && <ImageIcon className="w-4 h-4" />}
-                    <span>Rich Streaming Media Player</span>
+                    <span>Streaming Media Player</span>
                   </span>
-                  <span className="text-[10px] text-[var(--success)] font-bold">Stream Ready</span>
+                  <span className="text-[10px] text-[var(--success)]">Stream Verified</span>
                 </div>
 
                 <div className="pt-2 flex justify-center">
@@ -228,50 +243,50 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                     <img
                       alt={fileName}
                       src={mediaBlobUrl || ''}
-                      className="max-h-[400px] rounded-lg border border-[var(--border-color)] object-contain shadow-lg"
+                      className="max-h-[420px] rounded-xl border border-[var(--border-color)] object-contain shadow-2xl"
                     />
                   )}
                 </div>
               </div>
             )}
 
-            {/* Checksum & WebAuthn Attestation Box */}
-            <div className="bg-[var(--bg-main)] p-4 rounded-xl border border-[var(--border-color)] font-mono text-xs text-left space-y-3">
-              <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
-                <span>BLAKE3 Merkle Root:</span>
-                <span className="text-[var(--success)] font-bold">VERIFIED MATCH</span>
+            {/* Checksum & Biometric Proof Box */}
+            <div className="bg-[var(--bg-main)] p-4 rounded-xl border border-[var(--border-color)] text-xs text-left space-y-3">
+              <div className="flex justify-between items-center text-[11px] text-[var(--text-secondary)]">
+                <span>BLAKE3 Integrity Root:</span>
+                <span className="text-[var(--success)] font-bold">100% MATCH</span>
               </div>
-              <code className="text-[var(--accent)] text-[11px] break-all block">
+              <code className="text-[var(--accent)] text-[11px] break-all block p-2 rounded bg-[var(--bg-surface)] border border-[var(--border-color)]">
                 {telemetry.merkleRoot || 'e8a94b12f8c37d10ab67e9124a8723bc9910a34b2190f842d'}
               </code>
 
               {attestation ? (
                 <div className="pt-2 border-t border-[var(--border-color)] flex items-center justify-between text-[11px] text-[var(--success)]">
-                  <span className="flex items-center gap-1.5 font-bold">
-                    <Fingerprint className="w-4 h-4" />
-                    Hardware WebAuthn Attested (Touch ID / YubiKey ES256)
+                  <span className="flex items-center gap-2 font-bold">
+                    <Fingerprint className="w-4 h-4 text-[var(--accent)]" />
+                    Touch ID / YubiKey Proof Signed
                   </span>
-                  <span className="text-[10px] text-[var(--text-secondary)]">Verified</span>
+                  <span className="text-[10px] text-[var(--success)] font-bold">VERIFIED</span>
                 </div>
               ) : (
                 <button
                   onClick={handleBiometricAttest}
                   disabled={attesting}
-                  className="w-full py-2 mt-1 rounded bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--accent)] font-mono text-[11px] hover:border-[var(--accent)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--accent)] font-bold hover:border-[var(--accent)] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Fingerprint className="w-4 h-4" />
-                  <span>{attesting ? 'Authenticating Passkey...' : 'Sign Biometric Proof of Delivery (Touch ID / YubiKey)'}</span>
+                  <span>{attesting ? 'Authenticating Passkey...' : 'Sign Biometric Delivery Proof (Touch ID / YubiKey)'}</span>
                 </button>
               )}
             </div>
 
-            {/* Download Delivery Certificate Button */}
+            {/* Download Certificate Button */}
             <button
               onClick={downloadCertificate}
-              className="w-full py-3.5 rounded-lg bg-[var(--bg-main)] border border-[var(--accent)] text-[var(--accent)] font-mono text-xs font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-main)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--accent)] text-[var(--accent)] font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-main)] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
             >
               <FilePdf className="w-5 h-5" />
-              Download Signed Delivery Certificate (JSON)
+              Download Delivery Certificate (JSON)
             </button>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Copy, Check, Code, Lightning } from '@phosphor-icons/react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeViewer } from '@/components/QRCodeViewer';
 import { useClipVault } from '@/lib/hooks/useClipVault';
 
 export default function ClipVaultPage() {
@@ -68,11 +68,10 @@ export default function ClipVaultPage() {
           </div>
 
           {pairId ? (
-            <div className="p-4 bg-white rounded-xl inline-block shadow-lg">
-              <QRCodeSVG
-                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/clip?pair=${pairId}`}
-                size={140}
-                level="H"
+            <div className="flex justify-center">
+              <QRCodeViewer
+                url={`${typeof window !== 'undefined' ? window.location.origin : ''}/clip?pair=${pairId}`}
+                size={160}
               />
             </div>
           ) : (

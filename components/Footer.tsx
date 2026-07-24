@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck, Cpu, LockKey, Scales } from '@phosphor-icons/react';
+import { ShieldCheck, LockKey } from '@phosphor-icons/react';
 
 export function Footer() {
   return (
     <footer className="border-t border-[var(--border-color)] bg-[var(--bg-main)] py-12 mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-mono font-bold text-sm text-[var(--text-primary)]">
@@ -48,20 +48,6 @@ export function Footer() {
               <li>ML-KEM-1024 Post-Quantum Proof</li>
               <li>BLAKE3 Merkle Checksum Verified</li>
             </ul>
-          </div>
-
-          <div>
-            <h4 className="font-mono text-xs uppercase tracking-wider text-[var(--text-primary)] mb-3">Legal & Governance</h4>
-            <div className="bg-[var(--bg-surface)] p-3 rounded-lg border border-[var(--border-color)] space-y-2 font-mono text-xs">
-              <Link href="/privacy" className="flex items-center gap-1.5 text-[var(--accent)] hover:underline font-bold">
-                <ShieldCheck className="w-4 h-4 text-[var(--accent)]" />
-                <span>Privacy Policy & Attestation</span>
-              </Link>
-              <Link href="/terms" className="flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline">
-                <Scales className="w-4 h-4" />
-                <span>Terms of Service</span>
-              </Link>
-            </div>
           </div>
 
         </div>

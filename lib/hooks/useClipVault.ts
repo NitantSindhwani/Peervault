@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateECDHKeyPair, deriveSharedSymmetricKey, encryptChunk, decryptChunk } from '@/lib/crypto/crypto-engine';
-import { SignalingRoom } from '@/lib/supabase/signaling';
 import { createSenderPeerConnection, createReceiverPeerConnection } from '@/lib/webrtc/peer-connection';
 
 export function useClipVault(initialPairId?: string) {
@@ -8,18 +7,15 @@ export function useClipVault(initialPairId?: string) {
   const [content, setContent] = useState<string>('');
   const [status, setStatus] = useState<'idle' | 'pairing' | 'synced' | 'error'>('idle');
 
-  const signalingRef = useRef<SignalingRoom | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const sessionKeyRef = useRef<CryptoKey | null>(null);
+  const signalPollerRef = useRef<NodeJS.Timeout | null>(null);
 
   const startPairing = useCallback(async () => {
     try {
       const newPairId = `clip_${Math.random().toString(36).substring(2, 10)}`;
       setPairId(newPairId);
       setStatus('pairing');
-
-      const signaling = new SignalingRoom(`clip_${newPairId}`);
-      signalingRef.current = signaling;
 
       const keyPair = await generateECDHKeyPair();
       const rawPubKey = await window.crypto.subtle.exportKey('raw', keyPair.publicKey);
@@ -46,32 +42,32 @@ export function useClipVault(initialPairId?: string) {
         }
       };
 
-      await signaling.join(async (msg) => {
-        if (msg.type === 'ecdh_public_key' && msg.payload?.publicKey) {
-          const recipientKeyBuffer = new Uint8Array(
-            msg.payload.publicKey.match(/.{1,2}/g)!.map((b: string) => parseInt(b, 16))
-          ).buffer;
+      const offer = await channels.pc.createOffer();
+      await channels.pc.setLocalDescription(offer);
 
-          const recipientKey = await window.crypto.subtle.importKey(
-            'raw',
-            recipientKeyBuffer,
-            { name: 'ECDH', namedCurve: 'P-256' },
-            false,
-            []
-          );
-
-          const sessionKey = await deriveSharedSymmetricKey(keyPair.privateKey, recipientKey);
-          sessionKeyRef.current = sessionKey;
-
-          const offer = await channels.pc.createOffer();
-          await channels.pc.setLocalDescription(offer);
-          await signaling.sendOffer(offer);
-        } else if (msg.type === 'sdp_answer' && msg.payload) {
-          await channels.pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-        }
+      // Post offer to native 0-cost Next.js signal route
+      await fetch('/api/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: newPairId,
+          action: 'submit_offer',
+          offer: { pubKeyHex, sdp: JSON.stringify(offer) },
+        }),
       });
 
-      await signaling.sendPublicKey(pubKeyHex);
+      // Poll for answer
+      signalPollerRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/signal?roomId=${newPairId}`);
+          const data = await res.json();
+          if (data.answer && channels.pc.signalingState !== 'stable') {
+            await channels.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            clearInterval(signalPollerRef.current!);
+          }
+        } catch {}
+      }, 1000);
+
     } catch (e) {
       console.error('[ClipVault] Pairing error:', e);
       setStatus('error');
@@ -96,6 +92,12 @@ export function useClipVault(initialPairId?: string) {
     },
     []
   );
+
+  useEffect(() => {
+    return () => {
+      if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+    };
+  }, []);
 
   return {
     pairId,

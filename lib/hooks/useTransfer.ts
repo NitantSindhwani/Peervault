@@ -403,12 +403,18 @@ export function useTransfer({
       const cleanRoomId = targetRoomId.split('#')[0];
       let offerPayload = await parseInstantOfferHash(window.location.hash);
 
-      if (!offerPayload) {
-        try {
-          const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-          const data = await res.json();
-          if (data.offer) offerPayload = data.offer;
-        } catch {}
+      if (!offerPayload || !offerPayload.sdp) {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+            const data = await res.json();
+            if (data.offer && data.offer.sdp) {
+              offerPayload = data.offer;
+              break;
+            }
+          } catch {}
+          await new Promise((r) => setTimeout(r, 500));
+        }
       }
 
       const fileName = offerPayload?.fileName || 'dataset.bin';
@@ -514,6 +520,10 @@ export function useTransfer({
   ) => {
     let receivedBytes = 0;
     let chunkCount = 0;
+    let actualFileSize = fileSize;
+    let actualFileName = fileName;
+
+    controlChannel.binaryType = 'arraybuffer';
     dataChannel.binaryType = 'arraybuffer';
 
     setState('streaming');
@@ -525,8 +535,12 @@ export function useTransfer({
         const msg = JSON.parse(event.data);
         if (msg.type === 'metadata') {
           if (msg.fileName) {
+            actualFileName = msg.fileName;
             setReceivedFileName(msg.fileName);
             diskWriterRef.current?.setFileName(msg.fileName, msg.mimeType);
+          }
+          if (msg.fileSize && msg.fileSize > 0) {
+            actualFileSize = msg.fileSize;
           }
         }
       } catch {}
@@ -534,7 +548,19 @@ export function useTransfer({
 
     dataChannel.onmessage = async (event) => {
       try {
-        const rawPacket = event.data as ArrayBuffer;
+        let rawPacket: ArrayBuffer;
+        if (event.data instanceof Blob) {
+          rawPacket = await event.data.arrayBuffer();
+        } else if (event.data instanceof ArrayBuffer) {
+          rawPacket = event.data;
+        } else if (event.data?.buffer instanceof ArrayBuffer) {
+          rawPacket = event.data.buffer;
+        } else {
+          return;
+        }
+
+        if (rawPacket.byteLength < 16) return;
+
         const packetView = new DataView(rawPacket);
         const chunkIndex = packetView.getUint32(0, false);
         const payload = rawPacket.slice(16);
@@ -544,13 +570,17 @@ export function useTransfer({
           receivedBytes += payload.byteLength;
           chunkCount++;
 
-          controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+          try {
+            controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+          } catch {}
 
-          const progressPercent = fileSize > 0 ? Math.min(100, (receivedBytes / fileSize) * 100) : 0;
+          const targetSize = actualFileSize || fileSize || receivedBytes;
+          const progressPercent = targetSize > 0 ? Math.min(100, (receivedBytes / targetSize) * 100) : 0;
+
           setTelemetry((prev) => ({
             ...prev,
             bytesTransferred: receivedBytes,
-            totalBytes: fileSize,
+            totalBytes: targetSize,
             progressPercent,
             chunkIndex,
           }));
@@ -559,16 +589,16 @@ export function useTransfer({
             saveResumeSession({
               roomId,
               role: 'receiver',
-              fileName,
-              fileSize,
-              totalChunks: Math.ceil(fileSize / 64512),
+              fileName: actualFileName,
+              fileSize: targetSize,
+              totalChunks: Math.ceil(targetSize / 64512),
               completedChunksBitmap: [chunkIndex],
               bytesTransferred: receivedBytes,
               updatedAt: Date.now(),
             });
           }
 
-          if (receivedBytes >= fileSize) {
+          if (receivedBytes >= targetSize && targetSize > 0) {
             if (roomId) removeResumeSession(roomId);
             setState('verifying');
             const result = await diskWriterRef.current.close();

@@ -39,18 +39,21 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
     ordered: true,
     maxRetransmits: 10,
   });
+  controlChannel.binaryType = 'arraybuffer';
 
   // Channel 1: Data (unordered, maxPacketLifeTime for ultra throughput)
   const dataChannel = pc.createDataChannel('data', {
     ordered: false,
     maxPacketLifeTime: 3000,
   });
+  dataChannel.binaryType = 'arraybuffer';
 
   // Channel 2: Telemetry (ordered, reliable metrics)
   const telemetryChannel = pc.createDataChannel('telemetry', {
     ordered: true,
     maxRetransmits: 5,
   });
+  telemetryChannel.binaryType = 'arraybuffer';
 
   return { pc, controlChannel, dataChannel, telemetryChannel };
 }
@@ -69,9 +72,12 @@ export function createReceiverPeerConnection(
   });
 
   const channels: Partial<PeerChannels> = { pc };
+  let fired = false;
 
   pc.ondatachannel = (event: RTCDataChannelEvent) => {
     const channel = event.channel;
+    channel.binaryType = 'arraybuffer';
+
     if (channel.label === 'control') {
       channels.controlChannel = channel;
     } else if (channel.label === 'data') {
@@ -80,7 +86,8 @@ export function createReceiverPeerConnection(
       channels.telemetryChannel = channel;
     }
 
-    if (channels.controlChannel && channels.dataChannel && channels.telemetryChannel) {
+    if (channels.controlChannel && channels.dataChannel && !fired) {
+      fired = true;
       if (onChannelsReady) {
         onChannelsReady(channels);
       }

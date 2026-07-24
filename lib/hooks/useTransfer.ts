@@ -475,8 +475,9 @@ export function useTransfer({
       const cleanRoomId = targetRoomId.split('#')[0];
       let offerPayload = await parseInstantOfferHash(window.location.hash);
 
+      // Retry up to 30 times (15 seconds) to fetch the offer from signaling cache
       if (!offerPayload || !offerPayload.sdp) {
-        for (let attempt = 0; attempt < 10; attempt++) {
+        for (let attempt = 0; attempt < 30; attempt++) {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
             const data = await res.json();
@@ -489,7 +490,7 @@ export function useTransfer({
         }
       }
 
-      const fileName = offerPayload?.fileName || 'dataset.bin';
+      const fileName = offerPayload?.fileName || 'SharedFile';
       const fileSize = offerPayload?.fileSize || 0;
 
       // 2. Validate TTL Expiry
@@ -516,31 +517,88 @@ export function useTransfer({
       await diskWriter.init();
       diskWriterRef.current = diskWriter;
 
-      // 5. Create Receiver PeerConnection
-      const { pc } = createReceiverPeerConnection({}, (channels) => {
-        if (channels.controlChannel && channels.dataChannel) {
-          setState('connected');
-          setupReceiverChannelListeners(channels.controlChannel, channels.dataChannel, fileName, fileSize);
-        }
-      });
+      // 5. ALWAYS start staging poller — this must run regardless of WebRTC SDP status
+      // This is the guaranteed fallback path for any network condition
+      let isStagingComplete = false;
+      setState('negotiating');
 
-      // Handle ICE Candidate submit to Next.js in-memory route
-      pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          await fetch('/api/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              roomId: cleanRoomId,
-              action: 'submit_receiver_candidate',
-              candidate: event.candidate.toJSON(),
-            }),
-          }).catch(() => {});
+      const stagingPoller = setInterval(async () => {
+        if (isStagingComplete) {
+          clearInterval(stagingPoller);
+          return;
         }
-      };
+        try {
+          const res = await fetch(`/api/signal?roomId=${cleanRoomId}&action=get_staging`);
+          const data = await res.json();
+          if (data.available && data.chunks && data.chunks.length > 0) {
+            isStagingComplete = true;
+            clearInterval(stagingPoller);
+            if (signalPollerRef.current) clearInterval(signalPollerRef.current);
 
-      // Set Remote Description from URL offer
+            setState('streaming');
+            const dw = diskWriterRef.current || new DiskWriter(data.fileName, data.fileSize);
+            if (!diskWriterRef.current) {
+              await dw.init();
+            }
+            dw.setFileName(data.fileName);
+
+            let receivedBytes = 0;
+            for (const chunkItem of data.chunks) {
+              const hex = chunkItem.dataHex;
+              const bytes = new Uint8Array(Math.floor(hex.length / 2));
+              for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+              }
+              const payload = bytes.buffer.slice(16);
+              await dw.writeChunk(payload, receivedBytes);
+              receivedBytes += payload.byteLength;
+
+              const progressPercent = Math.min(100, (receivedBytes / data.fileSize) * 100);
+              setTelemetry((prev) => ({
+                ...prev,
+                bytesTransferred: receivedBytes,
+                totalBytes: data.fileSize,
+                progressPercent,
+              }));
+            }
+
+            const result = await dw.close();
+            if (dw) {
+              setReceivedFileName(dw.getFileName());
+            }
+            if (result?.downloadUrl) {
+              setReceivedBlobUrl(result.downloadUrl);
+            }
+            setState('complete');
+          }
+        } catch {}
+      }, 800);
+
+      // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
+        // Create Receiver PeerConnection
+        const { pc } = createReceiverPeerConnection({}, (channels) => {
+          if (channels.controlChannel && channels.dataChannel) {
+            setState('connected');
+            setupReceiverChannelListeners(channels.controlChannel, channels.dataChannel, fileName, fileSize);
+          }
+        });
+
+        // Handle ICE Candidate submit to Next.js in-memory route
+        pc.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await fetch('/api/signal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                roomId: cleanRoomId,
+                action: 'submit_receiver_candidate',
+                candidate: event.candidate.toJSON(),
+              }),
+            }).catch(() => {});
+          }
+        };
+
         const offerSDP = JSON.parse(offerPayload.sdp);
         await pc.setRemoteDescription(new RTCSessionDescription(offerSDP));
         const answer = await pc.createAnswer();
@@ -571,63 +629,12 @@ export function useTransfer({
             }
           } catch {}
         }, 500);
-
-        setState('negotiating');
-
-        // Dual-Engine Fallback: Poll Staging Cache if WebRTC P2P is delayed
-        let isStagingComplete = false;
-        const stagingPoller = setInterval(async () => {
-          if (isStagingComplete) {
-            clearInterval(stagingPoller);
-            return;
-          }
-          try {
-            const res = await fetch(`/api/signal?roomId=${cleanRoomId}&action=get_staging`);
-            const data = await res.json();
-            if (data.available && data.chunks && data.chunks.length > 0) {
-              isStagingComplete = true;
-              clearInterval(stagingPoller);
-              if (signalPollerRef.current) clearInterval(signalPollerRef.current);
-
-              setState('streaming');
-              const diskWriter = diskWriterRef.current || new DiskWriter(data.fileName, data.fileSize);
-              await diskWriter.init();
-              diskWriter.setFileName(data.fileName);
-
-              let receivedBytes = 0;
-              for (const chunkItem of data.chunks) {
-                const hex = chunkItem.dataHex;
-                const bytes = new Uint8Array(Math.floor(hex.length / 2));
-                for (let i = 0; i < bytes.length; i++) {
-                  bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-                }
-                const payload = bytes.buffer.slice(16);
-                await diskWriter.writeChunk(payload, receivedBytes);
-                receivedBytes += payload.byteLength;
-
-                const progressPercent = Math.min(100, (receivedBytes / data.fileSize) * 100);
-                setTelemetry((prev) => ({
-                  ...prev,
-                  bytesTransferred: receivedBytes,
-                  totalBytes: data.fileSize,
-                  progressPercent,
-                }));
-              }
-
-              const result = await diskWriter.close();
-              if (result?.downloadUrl) {
-                setReceivedBlobUrl(result.downloadUrl);
-              }
-              setReceivedFileName(data.fileName);
-              setState('complete');
-            }
-          } catch {}
-        }, 800);
       }
     } catch (err: any) {
       console.error('[Transfer] Receiver error:', err);
       setErrorMsg(err.message || 'Failed to start receiver node');
       setState('error');
+
     }
   }, []);
 

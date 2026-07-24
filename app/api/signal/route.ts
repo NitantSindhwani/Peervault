@@ -17,7 +17,7 @@ const stagingCache = new Map<
 setInterval(() => {
   const now = Date.now();
   for (const [roomId, item] of signalCache.entries()) {
-    if (now - item.updatedAt > 120000) { // 2 minutes for signaling
+    if (now - item.updatedAt > 600000) { // 10 minutes for signaling
       signalCache.delete(roomId);
     }
   }
@@ -122,10 +122,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ available: false });
     }
 
+    const receivedCount = staging.chunks.size;
+    const totalCount = staging.totalChunks;
+
+    // Only return chunks once ALL have been received to prevent partial file assembly
+    if (receivedCount < totalCount) {
+      return NextResponse.json({
+        available: false,
+        partial: true,
+        receivedChunks: receivedCount,
+        totalChunks: totalCount,
+      });
+    }
+
+    // Sort chunks by index to guarantee correct byte order
     const chunksArray: { index: number; dataHex: string }[] = [];
     for (const [index, dataHex] of staging.chunks.entries()) {
       chunksArray.push({ index, dataHex });
     }
+    chunksArray.sort((a, b) => a.index - b.index);
 
     return NextResponse.json({
       available: true,

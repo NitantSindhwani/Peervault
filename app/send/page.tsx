@@ -1,5 +1,7 @@
 'use client';
 
+import { QRCodeViewer } from '@/components/QRCodeViewer';
+
 import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -12,6 +14,7 @@ import {
   Timer,
   ArrowsClockwise,
   LockKey,
+  CheckCircle,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
@@ -31,7 +34,7 @@ export default function SendPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const { state, errorMsg, roomId, startSender } = useTransfer({
+  const { state, errorMsg, roomId, telemetry, startSender } = useTransfer({
     role: 'sender',
     file: selectedFile,
     passphrase,
@@ -290,18 +293,19 @@ export default function SendPage() {
         <div className="space-y-8">
           
           {/* Share Link & QR Card */}
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center shadow-xl">
             
             <div className="md:col-span-8 space-y-4">
               <div className="space-y-1 font-mono">
-                <span className="text-xs text-[var(--accent)] uppercase tracking-wider font-bold">
-                  {state === 'waiting_peer' ? 'P2P Sharing Room Active' : `Status: ${state.toUpperCase()}`}
-                </span>
-                <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">
-                  {state === 'waiting_peer' ? 'Ready for Recipient — Send Link Below' : `Status: ${state}`}
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--success)]/10 border border-[var(--success)]/30 text-xs text-[var(--success)] font-bold mb-1">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>0-Second Link Generated (Zero Server Upload)</span>
+                </div>
+                <h3 className="text-2xl font-bold text-[var(--text-primary)] font-display">
+                  {state === 'waiting_peer' ? 'Ready to Stream — Send Link Below' : `Status: ${state.toUpperCase()}`}
                 </h3>
-                <p className="text-xs text-[var(--text-secondary)]">
-                  Copy the link or scan the QR code. Keep this tab open while streaming.
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Your file remains 100% on your device disk. <strong>Zero bytes are uploaded to any cloud server</strong>. Streaming begins the moment your recipient opens the link.
                 </p>
               </div>
 
@@ -312,14 +316,14 @@ export default function SendPage() {
                     type="text"
                     readOnly
                     value={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
-                    className="flex-1 px-3 py-2.5 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)]"
+                    className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)]"
                   />
                   <button
                     onClick={copyShareUrl}
-                    className="px-4 py-2.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    className="px-5 py-3 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-lg glow-amber"
                   >
                     {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    <span>{copied ? 'Copied' : 'Copy Share Link'}</span>
+                    <span>{copied ? 'Copied Link!' : 'Copy Share Link'}</span>
                   </button>
                 </div>
               )}
@@ -328,20 +332,34 @@ export default function SendPage() {
             {/* QR Code Container */}
             {roomId && (
               <div className="md:col-span-4 flex justify-center border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6">
-                <div className="p-3 bg-white rounded-xl shadow-lg">
-                  <QRCodeSVG
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
-                    size={120}
-                    level="H"
-                  />
-                </div>
+                <QRCodeViewer
+                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                  size={160}
+                />
               </div>
             )}
 
           </div>
 
-          {/* Active Sender Telemetry */}
-          <TelemetryDashboard mock={false} />
+          {/* Status Indicator Card */}
+          {state === 'waiting_peer' ? (
+            <div className="bg-[var(--bg-surface)] border border-[var(--accent)]/30 rounded-2xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center mx-auto border border-[var(--accent)]/30 animate-pulse">
+                <Lightning className="w-6 h-6" weight="fill" />
+              </div>
+              <div className="space-y-1 font-mono">
+                <h4 className="text-base font-bold text-[var(--text-primary)] font-display">
+                  Waiting for Recipient to Open Link...
+                </h4>
+                <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
+                  Keep this browser tab open. As soon as your recipient opens the link, a direct peer-to-peer connection will be established instantly.
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* Active Live Sender Telemetry */
+            <TelemetryDashboard mock={false} liveData={telemetry} />
+          )}
 
         </div>
       )}

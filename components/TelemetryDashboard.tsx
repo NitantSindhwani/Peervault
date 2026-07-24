@@ -143,7 +143,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
             <span className="text-3xl font-mono font-bold text-[var(--text-primary)] tabular-nums">{telemetry.memoryUsedMb}</span>
             <span className="text-xs font-mono text-[var(--text-secondary)]">MB</span>
           </div>
-          <p className="text-[10px] font-mono text-[var(--success)] pt-4">Heap Budget &lt; 200MB Safe</p>
+          <p className="text-[10px] font-mono text-[var(--success)] pt-4">High-Speed Mode &lt; 2.0 GB RAM</p>
         </div>
 
       </div>

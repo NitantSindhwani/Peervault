@@ -13,11 +13,11 @@ export interface WindowMetrics {
 }
 
 export class BackpressureController {
-  private windowSize: number = 32;
+  private windowSize: number = 256;
   private unacknowledged: Set<number> = new Set();
-  private bufferedAmountLowThreshold: number = 256 * 1024; // 256KB
-  private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB
-  private minBufferedAmount: number = 4 * 1024 * 1024;    // 4MB
+  private bufferedAmountLowThreshold: number = 2 * 1024 * 1024; // 2MB
+  private maxBufferedAmount: number = 128 * 1024 * 1024;   // 128MB per channel
+  private minBufferedAmount: number = 16 * 1024 * 1024;    // 16MB
   private isPaused: boolean = false;
   private onPauseStateChange?: (isPaused: boolean) => void;
 
@@ -75,7 +75,7 @@ export class BackpressureController {
    * Dynamic window adjustment based on disk write speeds
    */
   public adjustWindowSize(newSize: number): void {
-    this.windowSize = Math.max(8, Math.min(128, newSize));
+    this.windowSize = Math.max(16, Math.min(512, newSize));
   }
 
   private setPaused(paused: boolean): void {

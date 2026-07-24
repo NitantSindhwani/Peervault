@@ -145,7 +145,7 @@ export function useTransfer({
 
       // 3. Compress Offer into URL Hash Fragment (< 1ms — 0 HTTP Requests!)
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
-      const offerHash = await createInstantOfferHash({
+      const offerPayload = {
         fileName: file.name,
         fileSize: file.size,
         pubKeyHex,
@@ -154,11 +154,23 @@ export function useTransfer({
         ttlHours,
         maxDownloads,
         timestamp: Date.now(),
-      });
+      };
 
+      const offerHash = await createInstantOfferHash(offerPayload);
       const fullShareRoomId = `${generatedRoomId}#offer=${offerHash}`;
       setRoomId(fullShareRoomId);
       setState('waiting_peer');
+
+      // Submit offer to in-memory signaling cache for Short QR Scanning
+      fetch('/api/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: generatedRoomId,
+          action: 'submit_offer',
+          offer: offerPayload,
+        }),
+      }).catch(() => {});
 
       // Audit Log Room Creation (IP, File Name, Size)
       fetch('/api/log', {
@@ -345,8 +357,17 @@ export function useTransfer({
       setRoomId(targetRoomId);
       setState('generating_key');
 
-      // 1. Parse Instant Offer Payload directly from URL Hash (< 1ms!)
-      const offerPayload = await parseInstantOfferHash(window.location.hash);
+      const cleanRoomId = targetRoomId.split('#')[0];
+      let offerPayload = await parseInstantOfferHash(window.location.hash);
+
+      if (!offerPayload) {
+        try {
+          const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+          const data = await res.json();
+          if (data.offer) offerPayload = data.offer;
+        } catch {}
+      }
+
       const fileName = offerPayload?.fileName || 'dataset.bin';
       const fileSize = offerPayload?.fileSize || 0;
 
@@ -383,7 +404,6 @@ export function useTransfer({
       });
 
       // Handle ICE Candidate submit to Next.js in-memory route
-      const cleanRoomId = targetRoomId.split('#')[0];
       pc.onicecandidate = async (event) => {
         if (event.candidate) {
           await fetch('/api/signal', {

@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// In-Memory Signaling Cache (Auto-cleans expired entries after 60s)
-const signalCache = new Map<string, { answer?: any; iceCandidates?: any[]; updatedAt: number }>();
+// In-Memory Signaling Cache (Auto-cleans expired entries after 120s)
+const signalCache = new Map<
+  string,
+  { offer?: any; answer?: any; iceCandidates?: any[]; updatedAt: number }
+>();
 
 // Cleanup stale entries every 30 seconds
 setInterval(() => {
   const now = Date.now();
   for (const [roomId, item] of signalCache.entries()) {
-    if (now - item.updatedAt > 60000) {
+    if (now - item.updatedAt > 120000) {
       signalCache.delete(roomId);
     }
   }
@@ -17,13 +20,20 @@ setInterval(() => {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { roomId, action, answer, candidate } = body;
+    const { roomId, action, offer, answer, candidate } = body;
 
     if (!roomId) {
       return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
     }
 
     const current = signalCache.get(roomId) || { iceCandidates: [], updatedAt: Date.now() };
+
+    if (action === 'submit_offer') {
+      current.offer = offer;
+      current.updatedAt = Date.now();
+      signalCache.set(roomId, current);
+      return NextResponse.json({ success: true });
+    }
 
     if (action === 'submit_answer') {
       current.answer = answer;
@@ -63,6 +73,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
+    offer: signal.offer || null,
     answer: signal.answer || null,
     iceCandidates: signal.iceCandidates || [],
   });

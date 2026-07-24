@@ -50,21 +50,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Real Test Simulation Trigger
-  const handleTestRelay = () => {
-    const newBytes = (relayedDataMb * 1024 * 1024) + (45 * 1024 * 1024);
-    const newPeers = activeRelayPeers + 1;
-    const newMb = parseFloat((newBytes / (1024 * 1024)).toFixed(1));
-
-    setRelayedDataMb(newMb);
-    setActiveRelayPeers(newPeers);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('peervault_relay_bytes', String(newBytes));
-      localStorage.setItem('peervault_relay_peers', String(newPeers));
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-12">
       
@@ -138,17 +123,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {meshNodeEnabled && (
-              <div className="pt-2 border-t border-[var(--border-color)] flex justify-between items-center text-[10px]">
-                <span className="text-[var(--text-secondary)]">Test P2P Relay Node:</span>
-                <button
-                  onClick={handleTestRelay}
-                  className="px-2.5 py-1 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30 font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-main)] transition-colors cursor-pointer"
-                >
-                  + Simulate 45MB P2P Relay
-                </button>
-              </div>
-            )}
           </div>
         </div>
 

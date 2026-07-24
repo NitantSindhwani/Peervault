@@ -216,6 +216,11 @@ export function useTransfer({
 
       channels.controlChannel.onopen = checkChannelsReady;
       channels.dataChannel.onopen = checkChannelsReady;
+      if (channels.dataChannels) {
+        for (const ch of channels.dataChannels) {
+          ch.onopen = checkChannelsReady;
+        }
+      }
 
       // 4. Listen for Recipient's SDP Answer over Native Next.js 0-cost Route
       signalPollerRef.current = setInterval(async () => {
@@ -762,12 +767,23 @@ export function useTransfer({
           const totalChunksEst = Math.ceil(targetSize / currentChunkSize);
           const progressPercent = targetSize > 0 ? Math.min(100, (receivedBytes / targetSize) * 100) : 0;
 
+          const now = Date.now();
+          const timeDiff = (now - lastSampleTimeRef.current) / 1000;
+          let currentSpeed = telemetry.speedBytesPerSec;
+          if (timeDiff >= 0.5) {
+            const bytesDiff = receivedBytes - lastByteCountRef.current;
+            currentSpeed = bytesDiff / timeDiff;
+            lastByteCountRef.current = receivedBytes;
+            lastSampleTimeRef.current = now;
+          }
+
           setTelemetry((prev) => ({
             ...prev,
             bytesTransferred: receivedBytes,
             totalBytes: targetSize,
             totalChunks: totalChunksEst,
             progressPercent,
+            speedBytesPerSec: currentSpeed,
             chunkIndex: chunkCount,
           }));
 

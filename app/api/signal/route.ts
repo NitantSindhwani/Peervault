@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// In-Memory Signaling Cache
-const signalCache = new Map<
-  string,
-  { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }
->();
+// Global Persistent In-Memory Signaling & Staging Caches
+const globalForSignal = globalThis as unknown as {
+  signalCache: Map<string, { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }>;
+  stagingCache: Map<string, { chunks: Map<number, string>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }>;
+};
 
-// Ephemeral Ciphertext Staging Cache (24-Hour TTL self-destruct)
-const stagingCache = new Map<
-  string,
-  { chunks: Map<number, string>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }
->();
+const signalCache = globalForSignal.signalCache || new Map();
+const stagingCache = globalForSignal.stagingCache || new Map();
+
+globalForSignal.signalCache = signalCache;
+globalForSignal.stagingCache = stagingCache;
 
 // Cleanup stale entries every 60 seconds
 setInterval(() => {

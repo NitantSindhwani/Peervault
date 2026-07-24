@@ -26,20 +26,19 @@ export async function createInstantOfferHash(payload: InstantOfferPayload): Prom
   const jsonStr = JSON.stringify(payload);
   
   if (typeof CompressionStream !== 'undefined') {
-    const stream = new CompressionStream('gzip');
-    const writer = stream.writable.getWriter();
-    const encoder = new TextEncoder();
-
-    writer.write(encoder.encode(jsonStr));
-    writer.close();
-
-    const buffer = await new Response(stream.readable).arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    try {
+      const blob = new Blob([new TextEncoder().encode(jsonStr)]);
+      const compressedStream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+      const buffer = await new Response(compressedStream).arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return encodeURIComponent(btoa(binary));
+    } catch (err) {
+      console.warn('[URL Signaling] CompressionStream fallback:', err);
     }
-    return encodeURIComponent(btoa(binary));
   }
 
   // Fallback Base64 URL encoding

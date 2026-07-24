@@ -110,9 +110,12 @@ export class BBRPacer {
    * Compute delay in milliseconds before sending next chunk
    */
   public getPacingDelayMs(chunkSizeBytes: number): number {
-    const pacingRateBytesPerMs = Math.max(0.05, (this.maxDeliveryRate || 100) * this.pacingGain);
+    if (this.state === 'STARTUP' || !this.maxDeliveryRate) {
+      return 0; // 0ms delay max speed during STARTUP & LAN direct stream
+    }
+    const pacingRateBytesPerMs = Math.max(500, this.maxDeliveryRate * this.pacingGain);
     const delayMs = chunkSizeBytes / pacingRateBytesPerMs;
-    return Math.min(500, Math.max(0, Math.floor(delayMs)));
+    return Math.min(20, Math.max(0, Math.floor(delayMs)));
   }
 
   /**

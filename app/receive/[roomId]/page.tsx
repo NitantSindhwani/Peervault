@@ -56,7 +56,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             }
           } catch {}
           if (!mounted) return;
-          await new Promise((r) => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 100));
         }
       }
 
@@ -261,7 +261,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             </div>
 
             <div className="px-4 py-2 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] text-xs text-[var(--accent)] font-bold self-stretch sm:self-auto text-center">
-              {telemetry.progressPercent}% Received
+              {Math.round(telemetry.progressPercent)}% Received
             </div>
           </div>
 

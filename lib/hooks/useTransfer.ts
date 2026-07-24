@@ -232,7 +232,7 @@ export function useTransfer({
         } catch {
           // ignore poller network hiccups
         }
-      }, 300);
+      }, 100);
 
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
@@ -366,8 +366,13 @@ export function useTransfer({
 
     try {
       while (offset < totalSize) {
-        if (!backpressure.canSend(channels.dataChannel)) {
-          await new Promise((r) => setTimeout(r, 10));
+        const activeChannels = channels.dataChannels && channels.dataChannels.length > 0
+          ? channels.dataChannels
+          : [channels.dataChannel];
+        const targetChannel = activeChannels[chunkIndex % activeChannels.length];
+
+        if (!backpressure.canSend(targetChannel)) {
+          await new Promise((r) => setTimeout(r, 0));
           continue;
         }
 
@@ -386,7 +391,7 @@ export function useTransfer({
         packet.set(new Uint8Array(header), 0);
         packet.set(new Uint8Array(buffer), 16);
 
-        channels.dataChannel.send(packet);
+        targetChannel.send(packet);
         backpressure.registerSentChunk(chunkIndex);
 
         offset += slice.size;
@@ -477,7 +482,7 @@ export function useTransfer({
               break;
             }
           } catch {}
-          await new Promise((r) => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 100));
         }
       }
 
@@ -534,21 +539,33 @@ export function useTransfer({
             dw.setFileName(data.fileName);
 
             let receivedBytes = 0;
+            let chunkCount = 0;
+            const totalChunksEst = data.totalChunks || Math.ceil(data.fileSize / 64512);
+
             for (const chunkItem of data.chunks) {
               const hex = chunkItem.dataHex;
-              const bytes = new Uint8Array(Math.floor(hex.length / 2));
-              for (let i = 0; i < bytes.length; i++) {
-                bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+              const len = hex.length;
+              const bytes = new Uint8Array(len >> 1);
+              for (let i = 0; i < len; i += 2) {
+                const high = hex.charCodeAt(i);
+                const low = hex.charCodeAt(i + 1);
+                const h = high >= 97 ? high - 87 : (high >= 65 ? high - 55 : high - 48);
+                const l = low >= 97 ? low - 87 : (low >= 65 ? low - 55 : low - 48);
+                bytes[i >> 1] = (h << 4) | l;
               }
               const payload = bytes.buffer.slice(16);
               await dw.writeChunk(payload, receivedBytes);
               receivedBytes += payload.byteLength;
+              chunkCount++;
 
-              const progressPercent = Math.min(100, (receivedBytes / data.fileSize) * 100);
+              const progressPercent = data.fileSize > 0 ? Math.min(100, (receivedBytes / data.fileSize) * 100) : 0;
               setTelemetry((prev) => ({
                 ...prev,
                 bytesTransferred: receivedBytes,
                 totalBytes: data.fileSize,
+                totalChunks: totalChunksEst,
+                chunkIndex: chunkCount,
+                merkleVerifiedCount: chunkCount,
                 progressPercent,
               }));
             }
@@ -563,7 +580,7 @@ export function useTransfer({
             setState('complete');
           }
         } catch {}
-      }, 800);
+      }, 100);
 
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
@@ -619,7 +636,7 @@ export function useTransfer({
               }
             }
           } catch {}
-        }, 500);
+        }, 100);
       }
     } catch (err: any) {
       console.error('[Transfer] Receiver error:', err);
@@ -636,7 +653,8 @@ export function useTransfer({
     controlChannel: RTCDataChannel,
     dataChannel: RTCDataChannel,
     fileName: string,
-    fileSize: number
+    fileSize: number,
+    dataChannels?: RTCDataChannel[]
   ) => {
     let receivedBytes = 0;
     let chunkCount = 0;
@@ -644,7 +662,6 @@ export function useTransfer({
     let actualFileName = fileName;
 
     controlChannel.binaryType = 'arraybuffer';
-    dataChannel.binaryType = 'arraybuffer';
 
     setState('streaming');
     keepAliveRef.current?.start();
@@ -670,7 +687,7 @@ export function useTransfer({
       } catch {}
     };
 
-    dataChannel.onmessage = async (event) => {
+    const handlePacket = async (event: MessageEvent) => {
       try {
         let rawPacket: ArrayBuffer;
         if (event.data instanceof Blob) {
@@ -690,7 +707,8 @@ export function useTransfer({
         const payload = rawPacket.slice(16);
 
         if (diskWriterRef.current) {
-          await diskWriterRef.current.writeChunk(payload, receivedBytes);
+          const writeOffset = chunkIndex * payload.byteLength;
+          await diskWriterRef.current.writeChunk(payload, writeOffset);
           receivedBytes += payload.byteLength;
           chunkCount++;
 
@@ -699,7 +717,8 @@ export function useTransfer({
           } catch {}
 
           const targetSize = actualFileSize || fileSize || receivedBytes;
-          const totalChunksEst = Math.ceil(targetSize / 64512);
+          const currentChunkSize = payload.byteLength || 256000;
+          const totalChunksEst = Math.ceil(targetSize / currentChunkSize);
           const progressPercent = targetSize > 0 ? Math.min(100, (receivedBytes / targetSize) * 100) : 0;
 
           setTelemetry((prev) => ({
@@ -752,6 +771,12 @@ export function useTransfer({
         console.error('[Transfer] Receiver chunk error:', err);
       }
     };
+
+    const targetDataChannels = dataChannels && dataChannels.length > 0 ? dataChannels : [dataChannel];
+    for (const ch of targetDataChannels) {
+      ch.binaryType = 'arraybuffer';
+      ch.onmessage = handlePacket;
+    }
   };
 
   return {

@@ -15,6 +15,7 @@ export interface PeerChannels {
   pc: RTCPeerConnection;
   controlChannel: RTCDataChannel;
   dataChannel: RTCDataChannel;
+  dataChannels?: RTCDataChannel[];
   telemetryChannel: RTCDataChannel;
 }
 
@@ -42,12 +43,16 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   });
   controlChannel.binaryType = 'arraybuffer';
 
-  // Channel 1: Data (unordered, maxPacketLifeTime for ultra throughput)
-  const dataChannel = pc.createDataChannel('data', {
-    ordered: false,
-    maxPacketLifeTime: 3000,
-  });
-  dataChannel.binaryType = 'arraybuffer';
+  // 8 Parallel Striped DataChannels for 8x Throughput Multi-Channel P2P Engine
+  const dataChannels: RTCDataChannel[] = [];
+  for (let i = 0; i < 8; i++) {
+    const ch = pc.createDataChannel(`data_${i}`, {
+      ordered: false,
+      maxPacketLifeTime: 3000,
+    });
+    ch.binaryType = 'arraybuffer';
+    dataChannels.push(ch);
+  }
 
   // Channel 2: Telemetry (ordered, reliable metrics)
   const telemetryChannel = pc.createDataChannel('telemetry', {
@@ -56,7 +61,13 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   });
   telemetryChannel.binaryType = 'arraybuffer';
 
-  return { pc, controlChannel, dataChannel, telemetryChannel };
+  return {
+    pc,
+    controlChannel,
+    dataChannel: dataChannels[0],
+    dataChannels,
+    telemetryChannel,
+  };
 }
 
 /**
@@ -73,7 +84,7 @@ export function createReceiverPeerConnection(
     iceCandidatePoolSize: 10,
   });
 
-  const channels: Partial<PeerChannels> = { pc };
+  const channels: Partial<PeerChannels> = { pc, dataChannels: [] };
   let fired = false;
 
   pc.ondatachannel = (event: RTCDataChannelEvent) => {
@@ -82,8 +93,10 @@ export function createReceiverPeerConnection(
 
     if (channel.label === 'control') {
       channels.controlChannel = channel;
-    } else if (channel.label === 'data') {
-      channels.dataChannel = channel;
+    } else if (channel.label.startsWith('data')) {
+      if (!channels.dataChannel) channels.dataChannel = channel;
+      channels.dataChannels = channels.dataChannels || [];
+      channels.dataChannels.push(channel);
     } else if (channel.label === 'telemetry') {
       channels.telemetryChannel = channel;
     }

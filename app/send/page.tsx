@@ -152,10 +152,8 @@ export default function SendPage() {
         setSelectedFile(zippedFile);
         setIsZipping(false);
 
-        setTimeout(() => {
-          sfx.playSuccess();
-          startSender();
-        }, 100);
+        sfx.playSuccess();
+        startSender();
       } catch (err) {
         console.error('Zip archiving failure:', err);
         setIsZipping(false);

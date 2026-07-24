@@ -237,6 +237,8 @@ export function useTransfer({
         }
       }
 
+      const processedReceiverCandidates = new Set<string>();
+
       // 4. Listen for Recipient's SDP Answer over Native Next.js 0-cost Route
       signalPollerRef.current = setInterval(async () => {
         try {
@@ -250,9 +252,13 @@ export function useTransfer({
 
           if (channels.pc.remoteDescription && data.receiverCandidates && data.receiverCandidates.length > 0) {
             for (const cand of data.receiverCandidates) {
-              try {
-                await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch {}
+              const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
+              if (!processedReceiverCandidates.has(key)) {
+                processedReceiverCandidates.add(key);
+                try {
+                  await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch {}
+              }
             }
           }
 
@@ -265,14 +271,15 @@ export function useTransfer({
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
 
-      // Dual-Engine Fallback: Stage encrypted chunks if WebRTC P2P does not connect within 15s
-      stagingFallbackTimerRef.current = setTimeout(async () => {
-        if (!hasStartedStreaming) {
-          try {
-            const chunkSize = 64512;
-            let offset = 0;
-            let chunkIndex = 0;
-            const totalChunks = Math.ceil(file.size / chunkSize);
+      // Dual-Engine Fallback: Stage encrypted chunks only for small files (<10MB) if P2P fails after 15s
+      if (enableStaging && file.size < 10 * 1024 * 1024) {
+        stagingFallbackTimerRef.current = setTimeout(async () => {
+          if (!hasStartedStreaming) {
+            try {
+              const chunkSize = 64512;
+              let offset = 0;
+              let chunkIndex = 0;
+              const totalChunks = Math.ceil(file.size / chunkSize);
 
             while (offset < file.size) {
               const slice = file.slice(offset, offset + chunkSize);
@@ -323,7 +330,8 @@ export function useTransfer({
             setState('complete');
           } catch {}
         }
-      }, 2500);
+      }, 15000);
+      }
 
       channels.controlChannel.onmessage = (event) => {
         try {
@@ -353,16 +361,21 @@ export function useTransfer({
     if (!channels) return;
 
     // Transmit original file metadata over control channel
-    try {
-      channels.controlChannel.send(
-        JSON.stringify({
-          type: 'metadata',
-          fileName: inputFile.name,
-          fileSize: inputFile.size,
-          mimeType: inputFile.type,
-        })
-      );
-    } catch {}
+    const sendMetadata = () => {
+      if (channels.controlChannel && channels.controlChannel.readyState === 'open') {
+        try {
+          channels.controlChannel.send(
+            JSON.stringify({
+              type: 'metadata',
+              fileName: inputFile.name,
+              fileSize: inputFile.size,
+              mimeType: inputFile.type,
+            })
+          );
+        } catch {}
+      }
+    };
+    sendMetadata();
 
     const bbr = new BBRPacer();
     bbrRef.current = bbr;
@@ -402,6 +415,10 @@ export function useTransfer({
         if (openChannels.length === 0) {
           await new Promise((r) => setTimeout(r, 10));
           continue;
+        }
+
+        if (chunkIndex % 50 === 0) {
+          sendMetadata();
         }
 
         const targetChannel = openChannels[chunkIndex % openChannels.length];
@@ -693,6 +710,8 @@ export function useTransfer({
           }),
         });
 
+        const processedSenderCandidates = new Set<string>();
+
         // Listen for Sender ICE Candidates over signaling cache
         signalPollerRef.current = setInterval(async () => {
           try {
@@ -700,9 +719,13 @@ export function useTransfer({
             const data = await res.json();
             if (pc.remoteDescription && data.senderCandidates && data.senderCandidates.length > 0) {
               for (const cand of data.senderCandidates) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch {}
+                const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
+                if (!processedSenderCandidates.has(key)) {
+                  processedSenderCandidates.add(key);
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch {}
+                }
               }
             }
           } catch {}

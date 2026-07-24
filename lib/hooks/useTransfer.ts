@@ -100,6 +100,7 @@ export function useTransfer({
   const diskWriterRef = useRef<DiskWriter | null>(null);
   const signalPollerRef = useRef<any>(null);
   const stagingFallbackTimerRef = useRef<any>(null);
+  const bcRef = useRef<BroadcastChannel | null>(null);
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
@@ -116,6 +117,7 @@ export function useTransfer({
       keepAliveRef.current?.stop();
       bbrRef.current?.stopPingLoop();
       if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+      if (bcRef.current) bcRef.current.close();
       peerChannelsRef.current?.pc.close();
     };
   }, []);
@@ -215,17 +217,22 @@ export function useTransfer({
 
       // Setup DataChannel Listeners & Readiness Poller
       let hasStartedStreaming = false;
+      const triggerStartStream = () => {
+        if (hasStartedStreaming) return;
+        hasStartedStreaming = true;
+        if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+        if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
+        setState('connected');
+        startStreamingFile(file);
+      };
+
       const checkChannelsReady = () => {
         if (hasStartedStreaming) return;
         if (
           channels.controlChannel.readyState === 'open' &&
           channels.dataChannel.readyState === 'open'
         ) {
-          hasStartedStreaming = true;
-          if (signalPollerRef.current) clearInterval(signalPollerRef.current);
-          if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
-          setState('connected');
-          startStreamingFile(file);
+          triggerStartStream();
         }
       };
 
@@ -235,6 +242,16 @@ export function useTransfer({
         for (const ch of channels.dataChannels) {
           ch.onopen = checkChannelsReady;
         }
+      }
+
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel(`pv_bc_${generatedRoomId}`);
+        bcRef.current = bc;
+        bc.onmessage = (e) => {
+          if (e.data?.type === 'receiver_ready') {
+            triggerStartStream();
+          }
+        };
       }
 
       const processedReceiverCandidates = new Set<string>();
@@ -444,6 +461,9 @@ export function useTransfer({
         packet.set(new Uint8Array(buffer), 16);
 
         try {
+          if (bcRef.current) {
+            bcRef.current.postMessage(packet.buffer);
+          }
           targetChannel.send(packet);
           backpressure.registerSentChunk(chunkIndex);
           offset += slice.size;
@@ -650,7 +670,33 @@ export function useTransfer({
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
         // Ref to dynamically attach incoming parallel channels to handlePacket
-        const activePacketHandlerRef = { current: (ch: RTCDataChannel) => {} };
+        const packetHandlerRef = { current: null as any };
+
+        const ensureListeners = () => {
+          if (!packetHandlerRef.current) {
+            packetHandlerRef.current = setupReceiverChannelListeners(
+              {} as any,
+              {} as any,
+              fileName,
+              fileSize
+            );
+          }
+          return packetHandlerRef.current;
+        };
+
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const bc = new BroadcastChannel(`pv_bc_${cleanRoomId}`);
+          bcRef.current = bc;
+          bc.postMessage({ type: 'receiver_ready' });
+          bc.onmessage = (event) => {
+            if (event.data instanceof ArrayBuffer || event.data?.buffer instanceof ArrayBuffer) {
+              const handler = ensureListeners();
+              if (handler) {
+                handler({ data: event.data } as MessageEvent);
+              }
+            }
+          };
+        }
 
         // Create Receiver PeerConnection with dynamic channel binding
         const { pc } = createReceiverPeerConnection(
@@ -665,11 +711,12 @@ export function useTransfer({
                 fileSize,
                 channels.dataChannels
               );
-              activePacketHandlerRef.current = packetHandler;
+              packetHandlerRef.current = packetHandler;
             }
           },
           (newChannel) => {
-            activePacketHandlerRef.current(newChannel);
+            const handler = ensureListeners();
+            if (handler) handler(newChannel);
           }
         );
 
@@ -754,34 +801,35 @@ export function useTransfer({
     let actualFileSize = fileSize;
     let actualFileName = fileName;
 
-    controlChannel.binaryType = 'arraybuffer';
+    if (controlChannel && 'binaryType' in controlChannel) {
+      controlChannel.binaryType = 'arraybuffer';
 
-    setState('streaming');
-    keepAliveRef.current?.start();
-
-    // Control Channel listener for metadata, ACKs & BBR pings
-    controlChannel.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'metadata') {
-          if (msg.fileName) {
-            actualFileName = msg.fileName;
-            setReceivedFileName(msg.fileName);
-            diskWriterRef.current?.setFileName(msg.fileName, msg.mimeType);
+      // Control Channel listener for metadata, ACKs & BBR pings
+      controlChannel.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'metadata') {
+            if (msg.fileName) {
+              actualFileName = msg.fileName;
+              setReceivedFileName(msg.fileName);
+              diskWriterRef.current?.setFileName(msg.fileName, msg.mimeType);
+            }
+            if (msg.fileSize && msg.fileSize > 0) {
+              actualFileSize = msg.fileSize;
+            }
+          } else if (msg.type === 'bbr_ping') {
+            try {
+              controlChannel.send(JSON.stringify({ type: 'bbr_pong', ts: msg.ts }));
+            } catch {}
           }
-          if (msg.fileSize && msg.fileSize > 0) {
-            actualFileSize = msg.fileSize;
-          }
-        } else if (msg.type === 'bbr_ping') {
-          try {
-            controlChannel.send(JSON.stringify({ type: 'bbr_pong', ts: msg.ts }));
-          } catch {}
-        }
-      } catch {}
-    };
+        } catch {}
+      };
+    }
 
     const handlePacket = async (event: MessageEvent) => {
       try {
+        setState('streaming');
+        keepAliveRef.current?.start();
         let rawPacket: ArrayBuffer;
         if (event.data instanceof Blob) {
           rawPacket = await event.data.arrayBuffer();

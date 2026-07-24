@@ -75,7 +75,8 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
  */
 export function createReceiverPeerConnection(
   config?: PeerConnectionConfig,
-  onChannelsReady?: (channels: Partial<PeerChannels>) => void
+  onChannelsReady?: (channels: Partial<PeerChannels>) => void,
+  onDataChannelAdded?: (channel: RTCDataChannel) => void
 ): { pc: RTCPeerConnection } {
   const pc = new RTCPeerConnection({
     iceServers: config?.iceServers || DEFAULT_ICE_SERVERS,
@@ -96,7 +97,12 @@ export function createReceiverPeerConnection(
     } else if (channel.label.startsWith('data')) {
       if (!channels.dataChannel) channels.dataChannel = channel;
       channels.dataChannels = channels.dataChannels || [];
-      channels.dataChannels.push(channel);
+      if (!channels.dataChannels.includes(channel)) {
+        channels.dataChannels.push(channel);
+      }
+      if (onDataChannelAdded) {
+        onDataChannelAdded(channel);
+      }
     } else if (channel.label === 'telemetry') {
       channels.telemetryChannel = channel;
     }

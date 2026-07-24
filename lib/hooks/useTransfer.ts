@@ -603,13 +603,29 @@ export function useTransfer({
 
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
-        // Create Receiver PeerConnection
-        const { pc } = createReceiverPeerConnection({}, (channels) => {
-          if (channels.controlChannel && channels.dataChannel) {
-            setState('connected');
-            setupReceiverChannelListeners(channels.controlChannel, channels.dataChannel, fileName, fileSize, channels.dataChannels);
+        // Ref to dynamically attach incoming parallel channels to handlePacket
+        const activePacketHandlerRef = { current: (ch: RTCDataChannel) => {} };
+
+        // Create Receiver PeerConnection with dynamic channel binding
+        const { pc } = createReceiverPeerConnection(
+          {},
+          (channels) => {
+            if (channels.controlChannel && channels.dataChannel) {
+              setState('connected');
+              const packetHandler = setupReceiverChannelListeners(
+                channels.controlChannel,
+                channels.dataChannel,
+                fileName,
+                fileSize,
+                channels.dataChannels
+              );
+              activePacketHandlerRef.current = packetHandler;
+            }
+          },
+          (newChannel) => {
+            activePacketHandlerRef.current(newChannel);
           }
-        });
+        );
 
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === 'failed') {
@@ -798,11 +814,19 @@ export function useTransfer({
       }
     };
 
+    const setupChannel = (ch: RTCDataChannel) => {
+      if (ch) {
+        ch.binaryType = 'arraybuffer';
+        ch.onmessage = handlePacket;
+      }
+    };
+
     const targetDataChannels = dataChannels && dataChannels.length > 0 ? dataChannels : [dataChannel];
     for (const ch of targetDataChannels) {
-      ch.binaryType = 'arraybuffer';
-      ch.onmessage = handlePacket;
+      setupChannel(ch);
     }
+
+    return setupChannel;
   };
 
   useEffect(() => {

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardened PeerVault - Launch Video</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background-color: #09090b;
+      color: #f4f4f5;
+      font-family: 'Inter', sans-serif;
+    }
+    #viewport {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: radial-gradient(circle at 50% 30%, rgba(234, 140, 40, 0.15), transparent 70%), #09090b;
+    }
+
+    /* Ambient Aurora Glow */
+    .aurora {
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1200px;
+      height: 600px;
+      background: radial-gradient(ellipse at center, rgba(234, 140, 40, 0.25) 0%, rgba(34, 197, 94, 0.1) 40%, transparent 70%);
+      filter: blur(80px);
+    }
+
+    /* Scene Container */
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    /* Scene 1: Hook */
+    .hook-badge {
+      font-family: 'JetBrains Mono', monospace;
+      color: #ea8c28;
+      background: rgba(234, 140, 40, 0.1);
+      border: 1px solid rgba(234, 140, 40, 0.3);
+      padding: 10px 24px;
+      border-radius: 9999px;
+      font-size: 22px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+    .hook-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 104px;
+      font-weight: 900;
+      text-align: center;
+      line-height: 1.05;
+      letter-spacing: -2px;
+      color: #ffffff;
+    }
+    .hook-title span {
+      color: #ea8c28;
+    }
+    .hook-sub {
+      font-size: 36px;
+      color: #a1a1aa;
+      margin-top: 28px;
+      font-weight: 600;
+    }
+
+    /* Scene 2: P2P Stream */
+    .stream-container {
+      display: flex;
+      align-items: center;
+      gap: 80px;
+      width: 1500px;
+      justify-content: space-between;
+    }
+    .device-card {
+      width: 440px;
+      height: 540px;
+      background: rgba(24, 24, 27, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 32px;
+      padding: 36px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    }
+    .device-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      color: #ea8c28;
+      font-weight: 700;
+    }
+    .beam-wrapper {
+      flex: 1;
+      height: 140px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .beam-line {
+      width: 100%;
+      height: 6px;
+      background: linear-gradient(90deg, #ea8c28, #22c55e);
+      box-shadow: 0 0 24px #ea8c28;
+      border-radius: 4px;
+    }
+    .speed-counter {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 56px;
+      font-weight: 700;
+      color: #22c55e;
+      margin-top: 16px;
+    }
+    .speed-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      color: #a1a1aa;
+    }
+
+    /* Scene 3: Security */
+    .shield-badge {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.15);
+      border: 3px solid #22c55e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 72px;
+      margin-bottom: 32px;
+      box-shadow: 0 0 60px rgba(34, 197, 94, 0.4);
+    }
+    .sec-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 76px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 16px;
+    }
+    .sec-grid {
+      display: flex;
+      gap: 32px;
+      margin-top: 40px;
+    }
+    .sec-card {
+      background: rgba(24, 24, 27, 0.95);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      padding: 28px 40px;
+      border-radius: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      color: #22c55e;
+      font-weight: 700;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+
+    /* Scene 4: Outro */
+    .logo-box {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+    .logo-icon {
+      width: 90px;
+      height: 90px;
+      background: #ea8c28;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      color: #09090b;
+      font-weight: 900;
+      box-shadow: 0 0 30px rgba(234, 140, 40, 0.5);
+    }
+    .logo-name {
+      font-family: 'Outfit', sans-serif;
+      font-size: 84px;
+      font-weight: 900;
+      color: #ffffff;
+    }
+    .outro-sub {
+      font-size: 36px;
+      color: #a1a1aa;
+      margin-bottom: 48px;
+      font-weight: 600;
+    }
+    .cta-btn {
+      font-family: 'JetBrains Mono', monospace;
+      background: #ea8c28;
+      color: #09090b;
+      font-size: 32px;
+      font-weight: 700;
+      padding: 24px 56px;
+      border-radius: 20px;
+      box-shadow: 0 0 50px rgba(234, 140, 40, 0.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="20">
+    <div class="aurora"></div>
+
+    <audio id="bg-music" src="assets/music/track.mp3" data-start="0" data-volume="0.8"></audio>
+
+    <!-- Scene 1: Hook -->
+    <div class="scene" id="scene1">
+      <div class="hook-badge">Anti-Cloud Architecture</div>
+      <h1 class="hook-title">Cloud Storage <span>Is Dead</span></h1>
+      <p class="hook-sub">Stream 45.8 GB Files Directly Browser-to-Browser</p>
+    </div>
+
+    <!-- Scene 2: P2P Stream -->
+    <div class="scene" id="scene2">
+      <div class="stream-container">
+        <div class="device-card" id="dev1">
+          <div class="device-title">SENDER NODE</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 700; color: #ffffff;">game_folder.zip</div>
+          <div style="color: #a1a1aa; font-size: 20px;">Size: 45.8 GB</div>
+          <div style="color: #ea8c28; font-family: 'JetBrains Mono'; font-size: 18px; font-weight: 700;">WebAssembly SIMD Encrypted</div>
+        </div>
+
+        <div class="beam-wrapper">
+          <div class="beam-line"></div>
+          <div class="speed-counter" id="speedNum">1,024 Mbps</div>
+          <div class="speed-label">DIRECT WebRTC DATACHANNEL</div>
+        </div>
+
+        <div class="device-card" id="dev2">
+          <div class="device-title" style="color: #22c55e;">RECIPIENT NODE</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 700; color: #ffffff;">Stream Receiving...</div>
+          <div style="color: #22c55e; font-size: 20px; font-weight: 700;">0.0s Cloud Wait</div>
+          <div style="color: #22c55e; font-family: 'JetBrains Mono'; font-size: 18px; font-weight: 700;">Zero Cloud Server Storage</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 3: Security -->
+    <div class="scene" id="scene3">
+      <div class="shield-badge" id="shield">🛡️</div>
+      <h2 class="sec-title">Zero-Trust Hardware Attestation</h2>
+      <p style="font-size: 32px; color: #a1a1aa; font-weight: 600;">BLAKE3 Merkle Tree Verification</p>
+      <div class="sec-grid">
+        <div class="sec-card" id="sc1">✓ AES-256-GCM ECDH</div>
+        <div class="sec-card" id="sc2">✓ WebAuthn Hardware</div>
+        <div class="sec-card" id="sc3">✓ Bit-For-Bit Integrity</div>
+      </div>
+    </div>
+
+    <!-- Scene 4: Outro -->
+    <div class="scene" id="scene4">
+      <div class="logo-box" id="logoBox">
+        <div class="logo-icon">🔒</div>
+        <div class="logo-name">Hardened PeerVault</div>
+      </div>
+      <p class="outro-sub">Zero Cloud Bills. Zero Data Leaks. Pure P2P.</p>
+      <div class="cta-btn" id="ctaBtn">peervault.dev</div>
+    </div>
+  </div>
+
+  <script>
+    const tl = gsap.timeline({ paused: true });
+
+    // Scene 1 Timeline (0 - 3.5s)
+    tl.to('#scene1', { autoAlpha: 1, duration: 0.4 }, 0)
+      .from('#scene1 .hook-title', { y: 40, duration: 0.6, ease: 'power3.out' }, 0.1)
+      .from('#scene1 .hook-sub', { y: 20, opacity: 0, duration: 0.6, ease: 'power3.out' }, 0.3)
+      .to('#scene1', { autoAlpha: 0, duration: 0.4 }, 3.1)
+      .set('#scene1', { autoAlpha: 0 }, 3.5);
+
+    // Scene 2 Timeline (3.5 - 9.5s)
+    tl.to('#scene2', { autoAlpha: 1, duration: 0.4 }, 3.5)
+      .from('#dev1', { x: -80, opacity: 0, duration: 0.6, ease: 'power2.out' }, 3.6)
+      .from('#dev2', { x: 80, opacity: 0, duration: 0.6, ease: 'power2.out' }, 3.6)
+      .from('.beam-line', { scaleX: 0, transformOrigin: 'left center', duration: 0.8 }, 4.0)
+      .from('#speedNum', { scale: 0.5, opacity: 0, duration: 0.5, ease: 'back.out(1.7)' }, 4.4)
+      .to('#scene2', { autoAlpha: 0, duration: 0.4 }, 9.1)
+      .set('#scene2', { autoAlpha: 0 }, 9.5);
+
+    // Scene 3 Timeline (9.5 - 15.0s)
+    tl.to('#scene3', { autoAlpha: 1, duration: 0.4 }, 9.5)
+      .from('#shield', { scale: 0, rotation: -180, duration: 0.7, ease: 'back.out(1.5)' }, 9.6)
+      .from('#sc1', { y: 30, opacity: 0, duration: 0.4 }, 10.2)
+      .from('#sc2', { y: 30, opacity: 0, duration: 0.4 }, 10.5)
+      .from('#sc3', { y: 30, opacity: 0, duration: 0.4 }, 10.8)
+      .to('#scene3', { autoAlpha: 0, duration: 0.4 }, 14.6)
+      .set('#scene3', { autoAlpha: 0 }, 15.0);
+
+    // Scene 4 Timeline (15.0 - 20.0s)
+    tl.to('#scene4', { autoAlpha: 1, duration: 0.4 }, 15.0)
+      .from('#logoBox', { scale: 0.8, opacity: 0, duration: 0.6, ease: 'power2.out' }, 15.1)
+      .from('#ctaBtn', { y: 40, opacity: 0, duration: 0.6, ease: 'back.out(1.7)' }, 15.5);
+
+    window.__timelines = {
+      main: tl
+    };
+  </script>
+</body>
+</html>

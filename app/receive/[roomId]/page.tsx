@@ -34,6 +34,8 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     passphrase,
   });
 
+  const [hasAccepted, setHasAccepted] = useState(false);
+
   // Check URL offer hash or signaling offer metadata on load
   useEffect(() => {
     let mounted = true;
@@ -43,7 +45,6 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       const cleanRoomId = roomId.split('#')[0];
       let payload = await parseInstantOfferHash(window.location.hash);
 
-      // Fallback: If not in URL hash, query signal endpoint for room offer metadata
       if (!payload) {
         try {
           const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
@@ -57,20 +58,24 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       if (!mounted) return;
       setOfferPayload(payload);
 
-      // If sender did NOT require a passphrase (or no offer payload specifies one), auto-unlock!
       if (!payload || !payload.passphraseRequired) {
         setIsUnlocked(true);
-        await startReceiver(roomId);
       }
     }
     checkOffer();
     return () => {
       mounted = false;
     };
-  }, [roomId, startReceiver]);
+  }, [roomId]);
 
   const unlockRoom = async () => {
     setIsUnlocked(true);
+    setHasAccepted(true);
+    await startReceiver(roomId);
+  };
+
+  const handleAcceptTransfer = async () => {
+    setHasAccepted(true);
     await startReceiver(roomId);
   };
 
@@ -185,6 +190,44 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
               Decrypt & Join Stream
             </button>
           </div>
+        </div>
+      ) : !hasAccepted ? (
+        /* Incoming File Transfer Details & Acceptance Card */
+        <div className="max-w-xl mx-auto bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl glow-amber animate-fade-in font-mono">
+          <div className="flex items-center gap-4 border-b border-[var(--border-color)] pb-4">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+              <DownloadSimple className="w-7 h-7 font-bold" />
+            </div>
+            <div className="space-y-1 flex-1 min-w-0">
+              <span className="text-[10px] text-[var(--success)] font-bold uppercase tracking-wider block">
+                Incoming P2P Transfer Ready
+              </span>
+              <h3 className="text-lg font-bold text-[var(--text-primary)] font-display truncate">
+                {fileName}
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Size: <strong className="text-[var(--text-primary)]">{fileSizeMb} MB</strong>
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-main)] rounded-xl p-4 border border-[var(--border-color)] space-y-2 text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2 text-[var(--success)] font-bold">
+              <ShieldCheck className="w-4 h-4" />
+              <span>AES-256-GCM End-to-End Encrypted</span>
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              File streams directly from sender device. Zero bytes are uploaded to cloud servers.
+            </p>
+          </div>
+
+          <button
+            onClick={handleAcceptTransfer}
+            className="w-full py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-xl"
+          >
+            <DownloadSimple className="w-5 h-5" weight="bold" />
+            <span>Accept & Receive File ({fileSizeMb} MB)</span>
+          </button>
         </div>
       ) : !isCompleted ? (
         /* Active Stream Download View */

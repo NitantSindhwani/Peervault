@@ -145,8 +145,23 @@ export function useTransfer({
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
 
-      // 3. Compress Offer into URL Hash Fragment (< 1ms — 0 HTTP Requests!)
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
+
+      // Submit Sender ICE Candidates to signaling endpoint
+      channels.pc.onicecandidate = async (event) => {
+        if (event.candidate) {
+          await fetch('/api/signal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              roomId: generatedRoomId,
+              action: 'submit_candidate',
+              candidate: event.candidate.toJSON(),
+            }),
+          }).catch(() => {});
+        }
+      };
+
       const offerPayload = {
         fileName: file.name,
         fileSize: file.size,
@@ -463,6 +478,21 @@ export function useTransfer({
             answer,
           }),
         });
+
+        // Listen for Sender ICE Candidates over signaling cache
+        signalPollerRef.current = setInterval(async () => {
+          try {
+            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+            const data = await res.json();
+            if (data.iceCandidates && data.iceCandidates.length > 0) {
+              for (const cand of data.iceCandidates) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch {}
+              }
+            }
+          } catch {}
+        }, 500);
 
         setState('negotiating');
       }

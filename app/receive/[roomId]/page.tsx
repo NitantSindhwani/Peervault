@@ -65,6 +65,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
         setOfferPayload(payload);
         if (!payload.passphraseRequired) {
           setIsUnlocked(true);
+          startReceiver(roomId);
         }
       }
     }

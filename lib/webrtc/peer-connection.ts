@@ -32,6 +32,7 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
     iceServers: config?.iceServers || DEFAULT_ICE_SERVERS,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
+    iceCandidatePoolSize: 10,
   });
 
   // Channel 0: Control (ordered, reliable)
@@ -69,6 +70,7 @@ export function createReceiverPeerConnection(
     iceServers: config?.iceServers || DEFAULT_ICE_SERVERS,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
+    iceCandidatePoolSize: 10,
   });
 
   const channels: Partial<PeerChannels> = { pc };
@@ -87,7 +89,13 @@ export function createReceiverPeerConnection(
     }
 
     const checkReady = () => {
-      if (channels.controlChannel && channels.dataChannel && !fired) {
+      if (
+        channels.controlChannel &&
+        channels.dataChannel &&
+        (channels.controlChannel.readyState === 'open' || channels.controlChannel.readyState === 'connecting') &&
+        (channels.dataChannel.readyState === 'open' || channels.dataChannel.readyState === 'connecting') &&
+        !fired
+      ) {
         fired = true;
         if (onChannelsReady) {
           onChannelsReady(channels);
@@ -97,6 +105,14 @@ export function createReceiverPeerConnection(
 
     channel.onopen = checkReady;
     checkReady();
+
+    const readyPoller = setInterval(() => {
+      if (fired) {
+        clearInterval(readyPoller);
+        return;
+      }
+      checkReady();
+    }, 50);
   };
 
   return { pc };

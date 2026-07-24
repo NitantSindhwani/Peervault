@@ -25,30 +25,44 @@ export interface TelemetryDashboardProps {
 
 export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboardProps) {
   const [telemetry, setTelemetry] = useState<TelemetryData>({
-    transferSpeedMb: 114.8,
-    rttMs: 2.1,
-    bbrState: 'PROBE_BW',
-    chunkIndex: 5410,
-    totalChunks: 8192,
-    progressPercent: 66,
+    transferSpeedMb: 0,
+    rttMs: 0,
+    bbrState: 'STARTUP',
+    chunkIndex: 0,
+    totalChunks: 0,
+    progressPercent: 0,
     connectionType: 'Direct LAN/P2P',
-    merkleVerifiedCount: 5410,
-    memoryUsedMb: 48.2,
+    merkleVerifiedCount: 0,
+    memoryUsedMb: 14.2,
   });
 
-  const [speedHistory, setSpeedHistory] = useState<number[]>([
-    85, 92, 104, 118, 112, 114.8,
-  ]);
+  const [speedHistory, setSpeedHistory] = useState<number[]>([]);
 
   useEffect(() => {
     if (!mock) {
       if (liveData) {
-        setTelemetry((prev) => ({
-          ...prev,
-          ...liveData,
-        }));
-        if (liveData.transferSpeedMb !== undefined) {
-          setSpeedHistory((prev) => [...prev.slice(-20), liveData.transferSpeedMb!]);
+        setTelemetry((prev) => {
+          const speedMb = (liveData as any).speedBytesPerSec !== undefined
+            ? parseFloat(((liveData as any).speedBytesPerSec / (1024 * 1024)).toFixed(1))
+            : (liveData.transferSpeedMb ?? prev.transferSpeedMb);
+
+          const chunkIdx = liveData.chunkIndex ?? prev.chunkIndex;
+          const totalChks = liveData.totalChunks ?? prev.totalChunks;
+          const verified = liveData.merkleVerifiedCount ?? chunkIdx;
+
+          return {
+            ...prev,
+            ...liveData,
+            transferSpeedMb: speedMb,
+            chunkIndex: chunkIdx,
+            totalChunks: totalChks,
+            merkleVerifiedCount: verified,
+          };
+        });
+
+        if ((liveData as any).speedBytesPerSec !== undefined) {
+          const speedMb = parseFloat(((liveData as any).speedBytesPerSec / (1024 * 1024)).toFixed(1));
+          setSpeedHistory((prev) => [...prev.slice(-20), speedMb]);
         }
       }
       return;

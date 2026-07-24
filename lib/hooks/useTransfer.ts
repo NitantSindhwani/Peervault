@@ -699,14 +699,16 @@ export function useTransfer({
           } catch {}
 
           const targetSize = actualFileSize || fileSize || receivedBytes;
+          const totalChunksEst = Math.ceil(targetSize / 64512);
           const progressPercent = targetSize > 0 ? Math.min(100, (receivedBytes / targetSize) * 100) : 0;
 
           setTelemetry((prev) => ({
             ...prev,
             bytesTransferred: receivedBytes,
             totalBytes: targetSize,
+            totalChunks: totalChunksEst,
             progressPercent,
-            chunkIndex,
+            chunkIndex: chunkCount,
           }));
 
           if (chunkCount % 50 === 0 && roomId) {

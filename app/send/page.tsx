@@ -15,11 +15,16 @@ import {
   ArrowsClockwise,
   LockKey,
   CheckCircle,
+  FileZip,
+  Warning,
+  X,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
 import { buildDirectoryTree, filterSelectedFiles, FileTreeNode } from '@/lib/utils/folder-walker';
 import { FolderTreeViewer } from '@/components/FolderTreeViewer';
+import { archiveFilesToZip } from '@/lib/zip/zip-archiver';
+import { sfx } from '@/lib/audio/sfx';
 
 export default function SendPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -27,6 +32,13 @@ export default function SendPage() {
   const [passphrase, setPassphrase] = useState('');
   const [ttlHours, setTtlHours] = useState(24);
   const [maxDownloads, setMaxDownloads] = useState(1);
+
+  // Optional Zip Archive state & Modal
+  const [isZipEnabled, setIsZipEnabled] = useState(false);
+  const [showZipModal, setShowZipModal] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
+  const [zipProgress, setZipProgress] = useState(0);
+  const [zipStatusText, setZipStatusText] = useState('');
 
   // Folder Slicer state
   const [directoryNodes, setDirectoryNodes] = useState<FileTreeNode[] | null>(null);
@@ -53,33 +65,57 @@ export default function SendPage() {
         if (launchParams.files && launchParams.files.length > 0) {
           const handle = launchParams.files[0];
           const file = await handle.getFile();
-          handleFileSelect(file);
+          handleBatchFileSelect([file]);
         }
       });
     }
   }, []);
 
   /**
-   * INSTANT File Selection — Zero RAM load, Zero waiting!
+   * INSTANT File & Multi-File Batch Selection — Zero RAM load, Zero waiting!
    */
-  const handleFileSelect = (file: File) => {
-    // Instant file handle attachment without reading ArrayBuffer into memory upfront
-    setSelectedFile(file);
-    setDirectoryNodes(null);
-  };
+  const handleBatchFileSelect = (files: FileList | File[]) => {
+    const filesArray = Array.from(files);
+    if (filesArray.length === 0) return;
 
-  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const filesArray = Array.from(e.target.files);
+    if (filesArray.length === 1) {
+      setSelectedFile(filesArray[0]);
+      setDirectoryNodes(null);
+      setRawFiles(filesArray);
+      setIsZipEnabled(false);
+      setShowZipModal(false);
+    } else {
+      // Authentic Folder / Multi-File Package Naming
       setRawFiles(filesArray);
       const tree = buildDirectoryTree(filesArray);
       setDirectoryNodes(tree);
 
-      const totalFolderSize = filesArray.reduce((acc, f) => acc + f.size, 0);
-      const folderName = filesArray[0].webkitRelativePath.split('/')[0] || 'dataset_folder';
-      const syntheticFile = new File([], `${folderName}.zip`, { type: 'application/zip' });
-      Object.defineProperty(syntheticFile, 'size', { value: totalFolderSize });
+      const totalBatchSize = filesArray.reduce((acc, f) => acc + f.size, 0);
+      
+      const relativePath = filesArray[0]?.webkitRelativePath;
+      let batchName = '';
+
+      if (relativePath && relativePath.includes('/')) {
+        // Authentic Root Folder Name (e.g. GTAVEnhanced -> GTAVEnhanced.zip)
+        const rootFolder = relativePath.split('/')[0];
+        batchName = `${rootFolder}.zip`;
+      } else {
+        // Smart Multi-File Package Name (e.g. photo1_and_5_other_files.zip)
+        const firstName = filesArray[0].name.replace(/\.[^/.]+$/, '');
+        batchName = filesArray.length === 2
+          ? `${firstName}_and_1_other_file.zip`
+          : `${firstName}_and_${filesArray.length - 1}_other_files.zip`;
+      }
+
+      const syntheticFile = new File([], batchName, { type: 'application/zip' });
+      Object.defineProperty(syntheticFile, 'size', { value: totalBatchSize });
       setSelectedFile(syntheticFile);
+    }
+  };
+
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleBatchFileSelect(e.target.files);
     }
   };
 
@@ -87,7 +123,50 @@ export default function SendPage() {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileSelect(e.dataTransfer.files[0]);
+      handleBatchFileSelect(e.dataTransfer.files);
+    }
+  };
+
+  const handleStartTransfer = async () => {
+    if (!selectedFile) return;
+
+    if (isZipEnabled && rawFiles.length > 0) {
+      setIsZipping(true);
+      setZipProgress(0);
+      setZipStatusText('Preparing lossless zip archive...');
+
+      try {
+        const activeFiles = directoryNodes 
+          ? filterSelectedFiles(directoryNodes, rawFiles)
+          : rawFiles;
+
+        const zippedFile = await archiveFilesToZip(
+          activeFiles,
+          (percent, text) => {
+            setZipProgress(percent);
+            setZipStatusText(text);
+          },
+          selectedFile.name
+        );
+
+        setSelectedFile(zippedFile);
+        setIsZipping(false);
+
+        setTimeout(() => {
+          sfx.playSuccess();
+          startSender();
+        }, 100);
+      } catch (err) {
+        console.error('Zip archiving failure:', err);
+        setIsZipping(false);
+        alert('Zip archiving failed. Falling back to direct streaming.');
+        sfx.playSuccess();
+        startSender();
+      }
+    } else {
+      // 0s Delay Instant Stream Mode
+      sfx.playSuccess();
+      startSender();
     }
   };
 
@@ -95,6 +174,7 @@ export default function SendPage() {
     if (!roomId) return;
     const url = `${window.location.origin}/receive/${roomId}`;
     navigator.clipboard.writeText(url);
+    sfx.playCopy();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -112,7 +192,7 @@ export default function SendPage() {
           Instant Direct P2P Sharing
         </h1>
         <p className="text-sm text-[var(--text-secondary)] font-mono max-w-[65ch]">
-          Zero cloud upload delay. Your file is streamed directly from your device to the recipient via encrypted WebRTC channels.
+          Zero cloud upload delay. Single files, multiple loose files, or entire folders stream directly between devices.
         </p>
       </div>
 
@@ -136,11 +216,12 @@ export default function SendPage() {
             >
               <input
                 type="file"
+                multiple
                 className="hidden"
                 id="file-input"
                 onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileSelect(e.target.files[0]);
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleBatchFileSelect(e.target.files);
                   }
                 }}
               />
@@ -161,12 +242,12 @@ export default function SendPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold font-mono text-[var(--text-primary)]">
-                    {selectedFile ? selectedFile.name : 'Select Any File or Folder to Share Instantly'}
+                    {selectedFile ? selectedFile.name : 'Drag & Drop File(s) or Folder to Stream'}
                   </h3>
                   <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
                     {selectedFile
                       ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Instant Stream`
-                      : 'No file size limits — file streams directly from your disk'}
+                      : 'Drop single files, multiple loose files, or whole folders'}
                   </p>
                 </div>
 
@@ -175,7 +256,7 @@ export default function SendPage() {
                     htmlFor="file-input"
                     className="px-4 py-2.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 cursor-pointer shadow-lg"
                   >
-                    Select File
+                    Select File(s)
                   </label>
                   <label
                     htmlFor="folder-input"
@@ -197,7 +278,9 @@ export default function SendPage() {
                   const selectedFiles = filterSelectedFiles(updatedNodes, rawFiles);
                   const activeSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
                   if (selectedFile) {
-                    Object.defineProperty(selectedFile, 'size', { value: activeSize });
+                    const updatedFile = new File([], selectedFile.name, { type: selectedFile.type || 'application/zip' });
+                    Object.defineProperty(updatedFile, 'size', { value: activeSize, configurable: true });
+                    setSelectedFile(updatedFile);
                   }
                 }}
               />
@@ -224,6 +307,41 @@ export default function SendPage() {
                 className="w-full px-3 py-2.5 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               />
             </div>
+
+            {/* Optional Zip Archive Slider Toggle (Only visible for multi-file batch / folder uploads) */}
+            {(rawFiles.length > 1 || directoryNodes !== null) && (
+              <div className="bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl p-3.5 space-y-1.5 font-mono text-xs animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--text-primary)] font-bold flex items-center gap-1.5">
+                    <FileZip className="w-4 h-4 text-amber-400" />
+                    <span>Optional Zip Archive (.zip)</span>
+                  </span>
+                  
+                  {/* Interactive Slider Switch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isZipEnabled) {
+                        setShowZipModal(true);
+                      } else {
+                        setIsZipEnabled(false);
+                      }
+                    }}
+                    className={`w-11 h-6 rounded-full transition-colors p-0.5 flex items-center cursor-pointer ${
+                      isZipEnabled ? 'bg-[var(--accent)] justify-end' : 'bg-[var(--border-color)] justify-start'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-white shadow-md transition-all" />
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-[var(--text-secondary)]">
+                  {isZipEnabled
+                    ? '⚠️ Zipping enabled (May add CPU compression delay).'
+                    : '⚡ Default (0s Delay): Files stream directly with zero zipping wait.'}
+                </p>
+              </div>
+            )}
 
             {/* Expiry Selectors */}
             <div className="grid grid-cols-2 gap-3 font-mono text-xs">
@@ -276,14 +394,30 @@ export default function SendPage() {
               </ul>
             </div>
 
+            {/* Zipping Progress Bar */}
+            {isZipping && (
+              <div className="space-y-1.5 font-mono text-xs animate-fade-in">
+                <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
+                  <span>{zipStatusText}</span>
+                  <span className="text-[var(--accent)] font-bold">{zipProgress}%</span>
+                </div>
+                <div className="w-full h-2 bg-[var(--bg-main)] rounded-full overflow-hidden border border-[var(--border-color)]">
+                  <div
+                    className="h-full bg-amber-400 transition-all duration-200"
+                    style={{ width: `${zipProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Create Room Button */}
             <button
-              disabled={!selectedFile}
-              onClick={startSender}
+              disabled={!selectedFile || isZipping}
+              onClick={handleStartTransfer}
               className="w-full py-3.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed glow-amber flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lightning className="w-5 h-5" weight="fill" />
-              Generate Instant Sharing Link
+              {isZipping ? `Compressing ZIP (${zipProgress}%)...` : 'Generate Instant Sharing Link'}
             </button>
           </div>
 
@@ -361,6 +495,66 @@ export default function SendPage() {
             <TelemetryDashboard mock={false} liveData={telemetry} />
           )}
 
+        </div>
+      )}
+
+      {/* Instant Closable Time Delay Warning Popup Modal on Batch / Folder Upload */}
+      {showZipModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl font-mono animate-fade-in relative">
+            
+            {/* Top Close Button (x) */}
+            <button
+              onClick={() => setShowZipModal(false)}
+              className="absolute top-4 right-4 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg hover:bg-[var(--bg-main)] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-3 pt-1">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Warning className="w-6 h-6" weight="bold" />
+              </div>
+              <div className="space-y-1 pr-6">
+                <h3 className="text-base font-bold text-[var(--text-primary)] font-display">
+                  Batch Upload Detected
+                </h3>
+                <span className="text-[10px] text-[var(--accent)] font-semibold uppercase tracking-wider block">
+                  0s Instant Stream Active By Default
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-[var(--text-secondary)] leading-relaxed border-t border-[var(--border-color)] pt-4">
+              <p>
+                By default, PeerVault streams files individually with <strong className="text-[var(--text-primary)] font-bold">0.0s delay</strong> (No zipping wait time).
+              </p>
+              <p>
+                If you prefer a single zipped archive, you can enable <strong className="text-amber-400 font-bold">Optional Zip Archive (.zip)</strong> in settings. <span className="text-[11px] text-[var(--text-secondary)] block pt-1">(Note: Zipping large files requires extra CPU processing time on your computer before streaming can begin).</span>
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setIsZipEnabled(true);
+                  setShowZipModal(false);
+                }}
+                className="w-full py-2.5 rounded-xl bg-[var(--bg-main)] border border-[var(--accent)] text-[var(--accent)] text-xs font-bold hover:bg-[var(--accent)] hover:text-[var(--bg-main)] transition-all cursor-pointer text-center"
+              >
+                Enable Zip (.zip)
+              </button>
+              <button
+                onClick={() => {
+                  setIsZipEnabled(false);
+                  setShowZipModal(false);
+                }}
+                className="w-full py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] text-xs font-bold hover:opacity-90 transition-opacity cursor-pointer shadow-lg glow-amber text-center"
+              >
+                Got It — Keep 0s Instant Stream
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

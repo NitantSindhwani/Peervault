@@ -9,6 +9,7 @@ import {
   Gauge,
 } from '@phosphor-icons/react';
 import { motion, useReducedMotion } from 'motion/react';
+import { TiltCard } from '@/components/TiltCard';
 
 export function BentoGrid() {
   const reduce = useReducedMotion();
@@ -94,7 +95,7 @@ export function BentoGrid() {
         
         {/* Section Header */}
         <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs font-mono text-[var(--accent)]">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)]/80 backdrop-blur border border-[var(--border-color)] text-xs font-mono text-[var(--accent)]">
             <Cpu className="w-3.5 h-3.5" />
             <span>High-Performance File Sharing</span>
           </div>
@@ -106,7 +107,7 @@ export function BentoGrid() {
           </p>
         </div>
 
-        {/* Asymmetric Bento Grid with Motion Reveal */}
+        {/* Asymmetric Bento Grid with Motion Reveal & 3D Tilt Interaction */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {bentoItems.map((item, index) => (
             <motion.div
@@ -115,36 +116,66 @@ export function BentoGrid() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.3 }}
               transition={{ duration: 0.5, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-              className={`${item.colSpan} ${
-                item.accentBg
-                  ? 'bg-gradient-to-br from-[var(--bg-surface)] to-[var(--bg-main)]'
-                  : 'bg-[var(--bg-surface)]'
-              } border border-[var(--border-color)] rounded-2xl p-6 transition-all flex flex-col justify-between group ${
-                item.borderGlow
-              }`}
+              className={`${item.colSpan} flex`}
             >
-              <div className="space-y-4">
-                <div
-                  className={`w-10 h-10 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center ${item.colorClass} group-hover:scale-110 transition-transform`}
-                >
-                  {item.icon}
+              <TiltCard
+                className={`p-6 flex flex-col justify-between group w-full h-full relative ${
+                  item.accentBg
+                    ? 'bg-gradient-to-br from-[var(--bg-surface)] to-[var(--bg-main)]'
+                    : 'bg-[var(--bg-surface)]'
+                }`}
+                spotlightColor={
+                  item.archNo === '#01' || item.archNo === '#05'
+                    ? 'rgba(234, 140, 40, 0.06)'
+                    : item.archNo === '#02'
+                    ? 'rgba(34, 197, 94, 0.06)'
+                    : item.archNo === '#03'
+                    ? 'rgba(251, 191, 36, 0.06)'
+                    : item.archNo === '#04'
+                    ? 'rgba(56, 189, 248, 0.06)'
+                    : 'rgba(52, 211, 153, 0.06)'
+                }
+                borderColor={
+                  item.archNo === '#01' || item.archNo === '#05'
+                    ? 'rgba(234, 140, 40, 0.15)'
+                    : item.archNo === '#02'
+                    ? 'rgba(34, 197, 94, 0.15)'
+                    : item.archNo === '#03'
+                    ? 'rgba(251, 191, 36, 0.15)'
+                    : item.archNo === '#04'
+                    ? 'rgba(56, 189, 248, 0.15)'
+                    : 'rgba(52, 211, 153, 0.15)'
+                }
+              >
+                {/* Organic grain noise effect inside accent cards */}
+                {item.accentBg && <div className="absolute inset-0 noise-overlay rounded-2xl" />}
+
+                <div className="space-y-4 relative z-10 flex-grow flex flex-col justify-between">
+                  <div>
+                    <div
+                      className={`w-10 h-10 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center ${item.colorClass} group-hover:scale-110 transition-transform duration-300`}
+                    >
+                      {item.icon}
+                    </div>
+                    <div className="mt-4">
+                      <span className={`text-[10px] font-mono ${item.colorClass} uppercase tracking-wider`}>
+                        Feature {item.archNo}
+                      </span>
+                      <h3 className="text-lg font-bold text-[var(--text-primary)] mt-1 font-display">
+                        {item.title}
+                      </h3>
+                      <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed font-mono">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className={`text-[10px] font-mono ${item.colorClass} uppercase tracking-wider`}>
-                    Feature {item.archNo}
-                  </span>
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] mt-1 font-display">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-[var(--text-secondary)] mt-2 leading-relaxed font-mono">
-                    {item.desc}
-                  </p>
+
+                <div className="mt-6 pt-4 border-t border-[var(--border-color)] flex justify-between items-center text-xs font-mono text-[var(--text-secondary)] relative z-10">
+                  <span>{item.footerLeft}</span>
+                  <span className={`${item.colorClass} font-semibold`}>{item.footerRight}</span>
                 </div>
-              </div>
-              <div className="mt-6 pt-4 border-t border-[var(--border-color)] flex justify-between items-center text-xs font-mono text-[var(--text-secondary)]">
-                <span>{item.footerLeft}</span>
-                <span className={`${item.colorClass} font-semibold`}>{item.footerRight}</span>
-              </div>
+              </TiltCard>
             </motion.div>
           ))}
         </div>

@@ -122,28 +122,6 @@ export function ArchitectureDiagram() {
           ))}
         </div>
 
-        {/* Bottom Callout CTA */}
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl font-mono">
-          <div className="space-y-1 text-center sm:text-left">
-            <h4 className="text-lg font-bold text-[var(--text-primary)] font-display flex items-center gap-2 justify-center sm:justify-start">
-              <ShieldCheck className="w-5 h-5 text-[var(--success)]" />
-              Ready to Send Your First File?
-            </h4>
-            <p className="text-xs text-[var(--text-secondary)]">
-              No registration needed. Select any file or folder and generate an instant link now.
-            </p>
-          </div>
-
-          <Link
-            href="/send"
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-bold text-xs hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-lg"
-          >
-            <Lightning className="w-4 h-4" weight="fill" />
-            <span>Start Instant Sharing</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
       </div>
     </section>
   );

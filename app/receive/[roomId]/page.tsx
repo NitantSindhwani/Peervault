@@ -12,9 +12,7 @@ import {
   Play,
   Image as ImageIcon,
   MusicNotes,
-  Lightning,
-  Clock,
-  ArrowRight,
+  FileText,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
@@ -29,28 +27,46 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attestation, setAttestation] = useState<WebAuthnAttestationResult | null>(null);
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
-  const [mediaBlobUrl, setMediaBlobUrl] = useState<string | null>(null);
 
-  const { state, errorMsg, telemetry, startReceiver } = useTransfer({
+  const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, startReceiver } = useTransfer({
     role: 'receiver',
     roomId,
     passphrase,
   });
 
-  // Check URL offer hash on load
+  // Check URL offer hash or signaling offer metadata on load
   useEffect(() => {
+    let mounted = true;
     async function checkOffer() {
       if (typeof window === 'undefined') return;
-      const payload = await parseInstantOfferHash(window.location.hash);
+
+      const cleanRoomId = roomId.split('#')[0];
+      let payload = await parseInstantOfferHash(window.location.hash);
+
+      // Fallback: If not in URL hash, query signal endpoint for room offer metadata
+      if (!payload) {
+        try {
+          const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+          const data = await res.json();
+          if (data.offer) {
+            payload = data.offer;
+          }
+        } catch {}
+      }
+
+      if (!mounted) return;
       setOfferPayload(payload);
 
-      // If no password is required by sender, auto-join INSTANTLY (< 1ms!)
-      if (payload && !payload.passphraseRequired) {
+      // If sender did NOT require a passphrase (or no offer payload specifies one), auto-unlock!
+      if (!payload || !payload.passphraseRequired) {
         setIsUnlocked(true);
         await startReceiver(roomId);
       }
     }
     checkOffer();
+    return () => {
+      mounted = false;
+    };
   }, [roomId, startReceiver]);
 
   const unlockRoom = async () => {
@@ -72,7 +88,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     const cert = {
       transfer_id: `tr_${Math.random().toString(36).substring(2, 10)}`,
       room_id: roomId,
-      file_name: offerPayload?.fileName || 'Dataset_Archive.zip',
+      file_name: receivedFileName || offerPayload?.fileName || 'Archive.zip',
       file_size_bytes: telemetry.totalBytes || offerPayload?.fileSize || 1288490188,
       merkle_root_blake3: telemetry.merkleRoot || 'e8a94b12f8c37d10ab67e9124a8723bc9910a34b2190f842d',
       completed_at: new Date().toISOString(),
@@ -96,15 +112,15 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     a.click();
   };
 
-  const fileName = offerPayload?.fileName || 'Dataset.bin';
-  const fileSizeMb = offerPayload?.fileSize
-    ? (offerPayload.fileSize / (1024 * 1024)).toFixed(1)
-    : '0.0';
+  // Priority: Real Received File Name > URL Offer File Name > Fallback
+  const fileName = receivedFileName || offerPayload?.fileName || 'SharedFile';
+  const fileSizeMb = (telemetry.totalBytes ? telemetry.totalBytes / (1024 * 1024) : (offerPayload?.fileSize || 0) / (1024 * 1024)).toFixed(1);
 
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(fileName);
-  const isAudio = /\.(mp3|wav|ogg|m4a)$/i.test(fileName);
+  const isAudio = /\.(mp3|wav|ogg|m4a|flac)$/i.test(fileName);
   const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(fileName);
-  const isMedia = isVideo || isAudio || isImage;
+  const isText = /\.(txt|json|js|ts|html|css|py|md|c|cpp)$/i.test(fileName);
+  const isMedia = isVideo || isAudio || isImage || isText;
 
   const isCompleted = state === 'complete';
   const isError = state === 'error';
@@ -186,7 +202,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                 {fileName}
               </h3>
               <p className="text-xs text-[var(--text-secondary)]">
-                Assembly Mode: File System Access API (Native SSD Writer)
+                Direct Browser-to-Browser Stream
               </p>
             </div>
 
@@ -213,27 +229,40 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                 File Stream Complete!
               </h2>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-md mx-auto">
-                <strong>{fileName}</strong> has been verified with 100% BLAKE3 Merkle integrity checks and saved to your device.
+                <strong>{fileName}</strong> is ready. View it inside the app below or download it directly to your device.
               </p>
             </div>
 
-            {/* Rich Cyberpunk Media Player */}
-            {isMedia && (
+            {/* DIRECT 1-CLICK IN-APP DOWNLOAD BUTTON */}
+            {receivedBlobUrl && (
+              <a
+                href={receivedBlobUrl}
+                download={fileName}
+                className="w-full py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-xl"
+              >
+                <DownloadSimple className="w-5 h-5" weight="bold" />
+                <span>Save File to Device ({fileSizeMb} MB)</span>
+              </a>
+            )}
+
+            {/* Rich In-App Media Player / Viewer */}
+            {isMedia && receivedBlobUrl && (
               <div className="bg-[var(--bg-main)] p-4 rounded-2xl border border-[var(--border-color)] space-y-3 text-left">
                 <div className="flex items-center justify-between text-xs text-[var(--accent)] font-bold border-b border-[var(--border-color)] pb-2">
                   <span className="flex items-center gap-2">
                     {isVideo && <Play className="w-4 h-4" />}
                     {isAudio && <MusicNotes className="w-4 h-4" />}
                     {isImage && <ImageIcon className="w-4 h-4" />}
-                    <span>Streaming Media Player</span>
+                    {isText && <FileText className="w-4 h-4" />}
+                    <span>In-App Viewer & Media Player</span>
                   </span>
-                  <span className="text-[10px] text-[var(--success)]">Stream Verified</span>
+                  <span className="text-[10px] text-[var(--success)]">100% Streamed</span>
                 </div>
 
                 <div className="pt-2 flex justify-center">
                   {(isVideo || isAudio) && (
                     <MediaPlayer
-                      src={mediaBlobUrl || ''}
+                      src={receivedBlobUrl}
                       fileName={fileName}
                       fileSize={telemetry.totalBytes}
                       type={isVideo ? 'video' : 'audio'}
@@ -242,7 +271,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                   {isImage && (
                     <img
                       alt={fileName}
-                      src={mediaBlobUrl || ''}
+                      src={receivedBlobUrl}
                       className="max-h-[420px] rounded-xl border border-[var(--border-color)] object-contain shadow-2xl"
                     />
                   )}

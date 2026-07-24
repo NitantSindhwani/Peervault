@@ -59,15 +59,12 @@ export function PricingSection() {
           </div>
         </div>
 
-        {/* CTA */}
-        <div className="text-center pt-4">
-          <Link
-            href="/send"
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-opacity glow-amber shadow-xl"
-          >
-            <Lightning className="w-5 h-5" weight="fill" />
-            Start Instant Free Transfer
-          </Link>
+        {/* Summary Badge */}
+        <div className="text-center pt-2 font-mono text-xs text-[var(--text-secondary)]">
+          <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] shadow-sm">
+            <ShieldCheck className="w-4 h-4 text-[var(--success)]" />
+            <span>Zero Subscription Fees • Zero Account Required • Unlimited Transfers</span>
+          </span>
         </div>
 
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Gauge, GitFork } from '@phosphor-icons/react';
 import { SpeedGraph } from './SpeedGraph';
 import { NodeTopologyCanvas } from './NodeTopologyCanvas';
+import { SpotlightCard } from './SpotlightCard';
 
 export interface TelemetryData {
   transferSpeedMb: number;
@@ -78,7 +79,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
   }, [mock, liveData]);
 
   return (
-    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-6 shadow-xl space-y-6">
+    <SpotlightCard className="p-6 space-y-6">
       
       {/* Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
@@ -172,6 +173,6 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
         </div>
       </div>
 
-    </div>
+    </SpotlightCard>
   );
 }

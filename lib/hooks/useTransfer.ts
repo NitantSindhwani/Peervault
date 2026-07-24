@@ -68,6 +68,8 @@ export function useTransfer({
   const [state, setState] = useState<TransferState>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(initialRoomId || null);
+  const [receivedBlobUrl, setReceivedBlobUrl] = useState<string | null>(null);
+  const [receivedFileName, setReceivedFileName] = useState<string | null>(null);
 
   const [telemetry, setTelemetry] = useState<LiveTelemetryState>({
     bytesTransferred: 0,
@@ -156,9 +158,8 @@ export function useTransfer({
         timestamp: Date.now(),
       };
 
-      const offerHash = await createInstantOfferHash(offerPayload);
-      const fullShareRoomId = `${generatedRoomId}#offer=${offerHash}`;
-      setRoomId(fullShareRoomId);
+      // Short 1-Liner Clean URL Room ID (e.g. /receive/pv_x7k9m2)
+      setRoomId(generatedRoomId);
       setState('waiting_peer');
 
       // Submit offer to in-memory signaling cache for Short QR Scanning
@@ -245,6 +246,18 @@ export function useTransfer({
 
     const channels = peerChannelsRef.current;
     if (!channels) return;
+
+    // Transmit original file metadata over control channel
+    try {
+      channels.controlChannel.send(
+        JSON.stringify({
+          type: 'metadata',
+          fileName: inputFile.name,
+          fileSize: inputFile.size,
+          mimeType: inputFile.type,
+        })
+      );
+    } catch {}
 
     const bbr = new BBRPacer();
     bbrRef.current = bbr;
@@ -334,12 +347,27 @@ export function useTransfer({
           etaString: formatETA(totalSize - offset, avgSpeed),
         });
 
+        // Save session checkpoint to IndexedDB for auto-resume on refresh
+        if (chunkIndex % 50 === 0 && roomId) {
+          saveResumeSession({
+            roomId,
+            role: 'sender',
+            fileName: inputFile.name,
+            fileSize: inputFile.size,
+            totalChunks: totalChunksEstimate,
+            completedChunksBitmap: [chunkIndex],
+            bytesTransferred: offset,
+            updatedAt: Date.now(),
+          });
+        }
+
         const delay = bbr.getPacingDelayMs(chunkSize);
         if (delay > 0) {
           await new Promise((r) => setTimeout(r, delay));
         }
       }
 
+      if (roomId) removeResumeSession(roomId);
       setState('verifying');
       setState('complete');
     } catch (err: any) {
@@ -461,6 +489,19 @@ export function useTransfer({
     setState('streaming');
     keepAliveRef.current?.start();
 
+    // Control Channel listener for metadata & acknowledgements
+    controlChannel.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'metadata') {
+          if (msg.fileName) {
+            setReceivedFileName(msg.fileName);
+            diskWriterRef.current?.setFileName(msg.fileName, msg.mimeType);
+          }
+        }
+      } catch {}
+    };
+
     dataChannel.onmessage = async (event) => {
       try {
         const rawPacket = event.data as ArrayBuffer;
@@ -484,9 +525,26 @@ export function useTransfer({
             chunkIndex,
           }));
 
+          if (chunkCount % 50 === 0 && roomId) {
+            saveResumeSession({
+              roomId,
+              role: 'receiver',
+              fileName,
+              fileSize,
+              totalChunks: Math.ceil(fileSize / 64512),
+              completedChunksBitmap: [chunkIndex],
+              bytesTransferred: receivedBytes,
+              updatedAt: Date.now(),
+            });
+          }
+
           if (receivedBytes >= fileSize) {
+            if (roomId) removeResumeSession(roomId);
             setState('verifying');
-            await diskWriterRef.current.close();
+            const result = await diskWriterRef.current.close();
+            if (result?.downloadUrl) {
+              setReceivedBlobUrl(result.downloadUrl);
+            }
             setState('complete');
 
             fetch('/api/log', {
@@ -512,6 +570,8 @@ export function useTransfer({
     errorMsg,
     roomId,
     telemetry,
+    receivedBlobUrl,
+    receivedFileName,
     startSender,
     startReceiver,
   };

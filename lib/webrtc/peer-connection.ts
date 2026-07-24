@@ -119,8 +119,10 @@ export function createReceiverPeerConnection(
     channel.onopen = checkReady;
     checkReady();
 
+    let attempts = 0;
     const readyPoller = setInterval(() => {
-      if (fired) {
+      attempts++;
+      if (fired || attempts > 200 || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
         clearInterval(readyPoller);
         return;
       }

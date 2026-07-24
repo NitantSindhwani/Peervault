@@ -98,7 +98,8 @@ export function useTransfer({
   const keepAliveRef = useRef<KeepAliveManager | null>(null);
   const merkleTreeRef = useRef<MerkleTree | null>(null);
   const diskWriterRef = useRef<DiskWriter | null>(null);
-  const signalPollerRef = useRef<NodeJS.Timeout | null>(null);
+  const signalPollerRef = useRef<any>(null);
+  const stagingFallbackTimerRef = useRef<any>(null);
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
@@ -140,9 +141,14 @@ export function useTransfer({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      // 2. Setup PeerConnection + DataChannels + SDP Offer (< 2ms)
       const channels = createSenderPeerConnection();
       peerChannelsRef.current = channels;
+
+      channels.pc.onconnectionstatechange = () => {
+        if (channels.pc.connectionState === 'failed') {
+          console.warn('[PeerConnection] Connection state failed');
+        }
+      };
 
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
@@ -202,6 +208,7 @@ export function useTransfer({
         ) {
           hasStartedStreaming = true;
           if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+          if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
           setState('connected');
           startStreamingFile(file);
         }
@@ -238,8 +245,8 @@ export function useTransfer({
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
 
-      // Dual-Engine Fallback: Stage encrypted chunks if WebRTC P2P does not connect within 2.5s
-      setTimeout(async () => {
+      // Dual-Engine Fallback: Stage encrypted chunks if WebRTC P2P does not connect within 15s
+      stagingFallbackTimerRef.current = setTimeout(async () => {
         if (!hasStartedStreaming) {
           try {
             const chunkSize = 64512;
@@ -589,9 +596,15 @@ export function useTransfer({
         const { pc } = createReceiverPeerConnection({}, (channels) => {
           if (channels.controlChannel && channels.dataChannel) {
             setState('connected');
-            setupReceiverChannelListeners(channels.controlChannel, channels.dataChannel, fileName, fileSize);
+            setupReceiverChannelListeners(channels.controlChannel, channels.dataChannel, fileName, fileSize, channels.dataChannels);
           }
         });
+
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === 'failed') {
+            console.warn('[PeerConnection] Receiver connection failed');
+          }
+        };
 
         // Handle ICE Candidate submit to Next.js in-memory route
         pc.onicecandidate = async (event) => {
@@ -780,6 +793,13 @@ export function useTransfer({
       ch.onmessage = handlePacket;
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+      if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
+    };
+  }, []);
 
   return {
     state,

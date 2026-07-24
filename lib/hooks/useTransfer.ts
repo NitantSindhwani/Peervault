@@ -152,18 +152,27 @@ export function useTransfer({
         }
       };
 
-      // Handle Sender ICE Candidates and submit to /api/signal
+      // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub)
+      const sendSignalMessage = (targetRoomId: string, payload: any) => {
+        fetch('/api/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId: targetRoomId, ...payload }),
+        }).catch(() => {});
+
+        fetch(`https://ntfy.sh/peervault_signal_${targetRoomId}`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      };
+
+      // Handle Sender ICE Candidates and submit to signal relays
       channels.pc.onicecandidate = async (event) => {
         if (event.candidate) {
-          await fetch('/api/signal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              roomId: generatedRoomId,
-              action: 'submit_sender_candidate',
-              candidate: event.candidate.toJSON(),
-            }),
-          }).catch(() => {});
+          sendSignalMessage(generatedRoomId, {
+            action: 'submit_sender_candidate',
+            candidate: event.candidate.toJSON(),
+          });
         }
       };
 
@@ -192,16 +201,11 @@ export function useTransfer({
       setShareUrl(generatedShareUrl);
       setState('waiting_peer');
 
-      // Submit offer to in-memory signaling cache for Short QR Scanning
-      fetch('/api/signal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId: generatedRoomId,
-          action: 'submit_offer',
-          offer: offerPayload,
-        }),
-      }).catch(() => {});
+      // Submit offer to signaling relays (Local API + Global PubSub)
+      sendSignalMessage(generatedRoomId, {
+        action: 'submit_offer',
+        offer: offerPayload,
+      });
 
       // Audit Log Room Creation (IP, File Name, Size)
       fetch('/api/log', {
@@ -256,7 +260,7 @@ export function useTransfer({
 
       const processedReceiverCandidates = new Set<string>();
 
-      // 4. Listen for Recipient's SDP Answer over Native Next.js 0-cost Route
+      // 4. Listen for Recipient's SDP Answer over dual signaling relays (Local API + Global PubSub)
       signalPollerRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
@@ -278,11 +282,37 @@ export function useTransfer({
               }
             }
           }
+        } catch {}
 
-          checkChannelsReady();
-        } catch {
-          // ignore poller network hiccups
-        }
+        // Global PubSub relay poll for Vercel cross-instance synchronization
+        try {
+          const ntfyRes = await fetch(`https://ntfy.sh/peervault_signal_${generatedRoomId}/json?poll=1`);
+          const text = await ntfyRes.text();
+          const lines = text.trim().split('\n');
+          for (const line of lines) {
+            if (!line) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.message) {
+                const payload = JSON.parse(msg.message);
+                if (payload.action === 'submit_answer' && payload.answer && channels.pc.signalingState !== 'stable') {
+                  await channels.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+                  setState('negotiating');
+                } else if (payload.action === 'submit_receiver_candidate' && payload.candidate && channels.pc.remoteDescription) {
+                  const key = JSON.stringify(payload.candidate);
+                  if (!processedReceiverCandidates.has(key)) {
+                    processedReceiverCandidates.add(key);
+                    try {
+                      await channels.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                    } catch {}
+                  }
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+
+        checkChannelsReady();
       }, 100);
 
       // Immediate check in case DataChannels opened early
@@ -726,18 +756,13 @@ export function useTransfer({
           }
         };
 
-        // Handle ICE Candidate submit to Next.js in-memory route
+        // Handle Receiver ICE Candidate submit to dual signaling relays
         pc.onicecandidate = async (event) => {
           if (event.candidate) {
-            await fetch('/api/signal', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                roomId: cleanRoomId,
-                action: 'submit_receiver_candidate',
-                candidate: event.candidate.toJSON(),
-              }),
-            }).catch(() => {});
+            sendSignalMessage(cleanRoomId, {
+              action: 'submit_receiver_candidate',
+              candidate: event.candidate.toJSON(),
+            });
           }
         };
 
@@ -746,20 +771,15 @@ export function useTransfer({
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        // Submit SDP Answer to native Next.js 0-cost route
-        await fetch('/api/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomId: cleanRoomId,
-            action: 'submit_answer',
-            answer,
-          }),
+        // Submit SDP Answer to dual signaling relays
+        sendSignalMessage(cleanRoomId, {
+          action: 'submit_answer',
+          answer,
         });
 
         const processedSenderCandidates = new Set<string>();
 
-        // Listen for Sender ICE Candidates over signaling cache
+        // Listen for Sender ICE Candidates over dual signaling relays
         signalPollerRef.current = setInterval(async () => {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
@@ -774,6 +794,31 @@ export function useTransfer({
                   } catch {}
                 }
               }
+            }
+          } catch {}
+
+          // Global PubSub relay poll for Vercel cross-instance synchronization
+          try {
+            const ntfyRes = await fetch(`https://ntfy.sh/peervault_signal_${cleanRoomId}/json?poll=1`);
+            const text = await ntfyRes.text();
+            const lines = text.trim().split('\n');
+            for (const line of lines) {
+              if (!line) continue;
+              try {
+                const msg = JSON.parse(line);
+                if (msg.message) {
+                  const payload = JSON.parse(msg.message);
+                  if (payload.action === 'submit_sender_candidate' && payload.candidate && pc.remoteDescription) {
+                    const key = JSON.stringify(payload.candidate);
+                    if (!processedSenderCandidates.has(key)) {
+                      processedSenderCandidates.add(key);
+                      try {
+                        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                      } catch {}
+                    }
+                  }
+                }
+              } catch {}
             }
           } catch {}
         }, 100);

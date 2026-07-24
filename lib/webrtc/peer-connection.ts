@@ -23,6 +23,24 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  {
+    urls: 'turn:global.relay.metered.ca:80',
+    username: 'e16e6d7647db00d662886f4a',
+    credential: 'J9/9lKx3W+xPzLdG',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:443',
+    username: 'e16e6d7647db00d662886f4a',
+    credential: 'J9/9lKx3W+xPzLdG',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+    username: 'e16e6d7647db00d662886f4a',
+    credential: 'J9/9lKx3W+xPzLdG',
+  },
 ];
 
 /**

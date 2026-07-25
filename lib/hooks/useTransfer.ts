@@ -162,7 +162,9 @@ export function useTransfer({
       peerChannelsRef.current = channels;
 
       channels.pc.onconnectionstatechange = () => {
-        if (channels.pc.connectionState === 'failed') {
+        if (channels.pc.connectionState === 'connected') {
+          triggerStartStream();
+        } else if (channels.pc.connectionState === 'failed') {
           console.warn('[PeerConnection] Connection failed. Triggering ICE restart...');
           try {
             channels.pc.restartIce();
@@ -289,8 +291,13 @@ export function useTransfer({
             const data = await res.json();
 
             if (data.answer && channels.pc.signalingState !== 'stable') {
-              await channels.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-              setState('negotiating');
+              try {
+                const ansObj = typeof data.answer === 'string' ? JSON.parse(data.answer) : data.answer;
+                await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+                setState('negotiating');
+              } catch (err) {
+                console.warn('[Transfer] setRemoteDescription answer error:', err);
+              }
             }
 
             if (channels.pc.remoteDescription && data.receiverCandidates && data.receiverCandidates.length > 0) {
@@ -467,7 +474,7 @@ export function useTransfer({
         const targetChannel = openChannels[chunkIndex % openChannels.length];
 
         if (!backpressure.canSend(targetChannel)) {
-          await new Promise((r) => setTimeout(r, 0));
+          await new Promise((r) => setTimeout(r, 1));
           continue;
         }
 

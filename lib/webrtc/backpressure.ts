@@ -51,11 +51,7 @@ export class BackpressureController {
       this.setPaused(false);
     }
 
-    if (this.unacknowledged.size >= this.windowSize) {
-      return false;
-    }
-
-    return !this.isPaused;
+    return true;
   }
 
   /**

@@ -71,11 +71,9 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
         setOfferPayload(payload);
         if (!payload.passphraseRequired) {
           setIsUnlocked(true);
-          startReceiver(roomId);
         }
       } else {
         setIsUnlocked(true);
-        startReceiver(roomId);
       }
     }
     checkOffer();
@@ -87,10 +85,13 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const unlockRoom = async () => {
     setIsUnlocked(true);
     setHasAccepted(true);
+    startReceiver(roomId);
   };
 
   const handleAcceptTransfer = async () => {
+    setIsUnlocked(true);
     setHasAccepted(true);
+    startReceiver(roomId);
   };
 
   const handleBiometricAttest = async () => {

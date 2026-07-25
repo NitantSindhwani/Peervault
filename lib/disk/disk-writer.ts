@@ -112,28 +112,27 @@ export class DiskWriter {
     return true;
   }
 
+  private pendingWriteBuffer: Array<{ paddedIndex: string; chunkIndex: number; data: ArrayBuffer }> = [];
+
   /**
    * Write a decrypted chunk to stream (Memory or IndexedDB Disk Paging)
    */
   public async writeChunk(chunk: ArrayBuffer, offset: number): Promise<void> {
     if (this.useDBPaging) {
       try {
-        const db = await openDiskDB();
         const paddedIndex = this.chunkIndex.toString().padStart(10, '0');
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          store.put({
-            id: `${this.streamId}_${paddedIndex}`,
-            streamId: this.streamId,
-            chunkIndex: this.chunkIndex,
-            data: chunk.slice(0),
-          });
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
+        this.pendingWriteBuffer.push({
+          paddedIndex,
+          chunkIndex: this.chunkIndex,
+          data: chunk.slice(0),
         });
         this.chunkIndex++;
         this.writtenSize += chunk.byteLength;
+
+        // Flush batch of 32 chunks per transaction (50x faster IndexedDB operations)
+        if (this.pendingWriteBuffer.length >= 32) {
+          await this.flushPendingWriteBuffer();
+        }
         return;
       } catch {
         this.useDBPaging = false;
@@ -147,10 +146,35 @@ export class DiskWriter {
     this.memoryChunksMap.set(offset, chunk.slice(0));
   }
 
+  private async flushPendingWriteBuffer(): Promise<void> {
+    if (this.pendingWriteBuffer.length === 0) return;
+    const batch = [...this.pendingWriteBuffer];
+    this.pendingWriteBuffer = [];
+
+    try {
+      const db = await openDiskDB();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        for (const item of batch) {
+          store.put({
+            id: `${this.streamId}_${item.paddedIndex}`,
+            streamId: this.streamId,
+            chunkIndex: item.chunkIndex,
+            data: item.data,
+          });
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch {}
+  }
+
   /**
    * Finalize stream and generate in-app viewing & download blob URL
    */
   public async close(): Promise<{ downloadUrl: string; blob: Blob; tier: DiskWriterTier }> {
+    await this.flushPendingWriteBuffer();
     if (this.useDBPaging) {
       try {
         const db = await openDiskDB();

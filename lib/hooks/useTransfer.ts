@@ -16,6 +16,8 @@ import { ForwardErrorCorrection } from '@/lib/crypto/fec';
 import { LocalSubnetDiscovery } from '@/lib/webrtc/local-discovery';
 import { SwarmMeshSeeder } from '@/lib/webrtc/swarm-mesh';
 
+import { WebSocketSignaler } from '@/lib/webrtc/websocket-signaling';
+
 export type TransferRole = 'sender' | 'receiver';
 export type TransferState =
   | 'idle'
@@ -142,9 +144,14 @@ export function useTransfer({
     };
   }, [addLog]);
 
-  // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub)
+  const wsSignalerRef = useRef<WebSocketSignaler | null>(null);
+
+  // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub WebSocket)
   const sendSignalMessage = useCallback((targetRoomId: string, payload: any) => {
-    addLog('SIGNAL', `POST /api/signal action: ${payload.action || 'send'}`);
+    addLog('SIGNAL', `Signaling action: ${payload.action || 'send'}`);
+    if (wsSignalerRef.current) {
+      wsSignalerRef.current.send(payload);
+    }
     fetch('/api/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -202,6 +209,28 @@ export function useTransfer({
 
       const channels = createSenderPeerConnection();
       peerChannelsRef.current = channels;
+
+      const signaler = new WebSocketSignaler(generatedRoomId, async (msg) => {
+        if (msg.action === 'submit_answer' && msg.answer) {
+          const ansStr = typeof msg.answer === 'string' ? msg.answer : JSON.stringify(msg.answer);
+          if (lastAppliedAnswerRef.current !== ansStr) {
+            lastAppliedAnswerRef.current = ansStr;
+            try {
+              const ansObj = typeof msg.answer === 'string' ? JSON.parse(msg.answer) : msg.answer;
+              await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+              addLog('SIGNAL', 'Applied recipient SDP Answer via WebSocket!');
+              setState('negotiating');
+            } catch {}
+          }
+        } else if (msg.action === 'submit_receiver_candidate' && msg.candidate) {
+          try {
+            await channels.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+            addLog('ICE', 'Added recipient ICE candidate via WebSocket');
+          } catch {}
+        }
+      });
+      signaler.connect();
+      wsSignalerRef.current = signaler;
 
       channels.pc.onconnectionstatechange = () => {
         addLog('CHANNEL', `Sender connection state: ${channels.pc.connectionState}`);
@@ -532,6 +561,43 @@ export function useTransfer({
     }));
 
     try {
+      addLog('INFO', `Starting High-Speed WebRTC P2P Stream (${totalChunksEstimate} chunks)`);
+      
+      const PRE_BUFFER_SIZE = 64; // Pre-buffer 64 chunks (16MB) in RAM
+      const preBufferQueue: Array<{ chunkIndex: number; packet: Uint8Array }> = [];
+      let bufferOffset = 0;
+      let bufferChunkIndex = 0;
+      let isReadingDone = false;
+
+      // Parallel Disk Pre-Reader Loop (runs ahead in background)
+      const fillPreBuffer = async () => {
+        while (bufferOffset < totalSize && preBufferQueue.length < PRE_BUFFER_SIZE) {
+          const cIdx = bufferChunkIndex;
+          const chunkSize = scaler.getChunkSize();
+          const slice = inputFile.slice(bufferOffset, bufferOffset + chunkSize);
+          bufferOffset += slice.size;
+          bufferChunkIndex++;
+
+          const buffer = await slice.arrayBuffer();
+
+          const iv = window.crypto.getRandomValues(new Uint8Array(12));
+          const header = new ArrayBuffer(16);
+          const headerView = new DataView(header);
+          headerView.setUint32(0, cIdx, false);
+          new Uint8Array(header).set(iv, 4);
+
+          const packet = new Uint8Array(header.byteLength + buffer.byteLength);
+          packet.set(new Uint8Array(header), 0);
+          packet.set(new Uint8Array(buffer), 16);
+
+          preBufferQueue.push({ chunkIndex: cIdx, packet });
+        }
+        if (bufferOffset >= totalSize) isReadingDone = true;
+      };
+
+      // Fill initial 16MB buffer (< 10ms)
+      await fillPreBuffer();
+
       while (offset < totalSize) {
         const activeChannels = channels.dataChannels && channels.dataChannels.length > 0
           ? channels.dataChannels
@@ -539,53 +605,50 @@ export function useTransfer({
 
         const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
         if (openChannels.length === 0) {
-          await new Promise((r) => setTimeout(r, 10));
+          await new Promise((r) => setTimeout(r, 5));
           continue;
         }
 
-        if (chunkIndex % 50 === 0) {
-          sendMetadata();
-        }
-
-        const targetChannel = openChannels[chunkIndex % openChannels.length];
-
-        if (!backpressure.canSend(targetChannel)) {
-          await new Promise((r) => setTimeout(r, 1));
-          continue;
-        }
-
-        const chunkSize = scaler.getChunkSize();
-        const slice = inputFile.slice(offset, offset + chunkSize);
-        const buffer = await slice.arrayBuffer();
-
-        // Header: [chunkIndex: 4B][iv: 12B][payload]
-        const iv = window.crypto.getRandomValues(new Uint8Array(12));
-        const header = new ArrayBuffer(16);
-        const headerView = new DataView(header);
-        headerView.setUint32(0, chunkIndex, false);
-        new Uint8Array(header).set(iv, 4);
-
-        const packet = new Uint8Array(header.byteLength + buffer.byteLength);
-        packet.set(new Uint8Array(header), 0);
-        packet.set(new Uint8Array(buffer), 16);
-
-        try {
-          if (bcRef.current) {
-            bcRef.current.postMessage(packet.buffer);
+        if (preBufferQueue.length === 0) {
+          await fillPreBuffer();
+          if (preBufferQueue.length === 0) {
+            await new Promise((r) => setTimeout(r, 1));
+            continue;
           }
-          targetChannel.send(packet);
-          backpressure.registerSentChunk(chunkIndex);
-          offset += slice.size;
-          chunkIndex++;
-        } catch (sendErr) {
-          console.warn('[Transfer] Channel send retry:', sendErr);
-          await new Promise((r) => setTimeout(r, 10));
+        }
+
+        // Fast Micro-Burst: Send up to 16 chunks synchronously per event-loop tick
+        let burstSent = 0;
+        while (preBufferQueue.length > 0 && burstSent < 16) {
+          const targetChannel = openChannels[chunkIndex % openChannels.length];
+          if (!backpressure.canSend(targetChannel)) break;
+
+          const item = preBufferQueue.shift()!;
+          try {
+            if (bcRef.current) {
+              bcRef.current.postMessage(item.packet.buffer);
+            }
+            targetChannel.send(item.packet as any);
+            backpressure.registerSentChunk(item.chunkIndex);
+            offset += (item.packet.byteLength - 16);
+            chunkIndex++;
+            burstSent++;
+          } catch (sendErr) {
+            preBufferQueue.unshift(item);
+            await new Promise((r) => setTimeout(r, 5));
+            break;
+          }
+        }
+
+        // Replenish pre-buffer in background
+        if (!isReadingDone && preBufferQueue.length < PRE_BUFFER_SIZE / 2) {
+          fillPreBuffer();
         }
 
         const now = Date.now();
         const timeDiff = (now - lastSampleTimeRef.current) / 1000;
         let currentSpeed = telemetry.speedBytesPerSec;
-        if (timeDiff >= 0.5) {
+        if (timeDiff >= 0.2) {
           const bytesDiff = offset - lastByteCountRef.current;
           currentSpeed = bytesDiff / timeDiff;
           lastByteCountRef.current = offset;
@@ -629,7 +692,7 @@ export function useTransfer({
           });
         }
 
-        const delay = bbr.getPacingDelayMs(chunkSize);
+        const delay = bbr.getPacingDelayMs(scaler.getChunkSize());
         if (delay > 0) {
           await new Promise((r) => setTimeout(r, delay));
         }
@@ -756,11 +819,14 @@ export function useTransfer({
         const { pc } = createReceiverPeerConnection(
           {},
           (channels) => {
-            if (channels.controlChannel && channels.dataChannel) {
+            const activeControl = channels.controlChannel || channels.dataChannel;
+            const activeData = channels.dataChannel || channels.controlChannel;
+            if (activeControl && activeData && !currentPacketHandler) {
               setState('connected');
+              addLog('CHANNEL', 'Receiver WebRTC connection established!');
               currentPacketHandler = setupReceiverChannelListeners(
-                channels.controlChannel,
-                channels.dataChannel,
+                activeControl,
+                activeData,
                 fileName,
                 fileSize,
                 channels.dataChannels
@@ -776,6 +842,17 @@ export function useTransfer({
             attachChannelListener(newChannel);
           }
         );
+
+        const signaler = new WebSocketSignaler(cleanRoomId, async (msg) => {
+          if (msg.action === 'submit_sender_candidate' && msg.candidate) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+              addLog('ICE', 'Added sender ICE candidate via WebSocket');
+            } catch {}
+          }
+        });
+        signaler.connect();
+        wsSignalerRef.current = signaler;
 
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === 'failed') {
@@ -1038,6 +1115,11 @@ export function useTransfer({
       if (ch) {
         ch.binaryType = 'arraybuffer';
         ch.onmessage = handlePacket;
+        ch.onopen = () => {
+          ch.onmessage = handlePacket;
+          addLog('CHANNEL', `Receiver DataChannel ${ch.label} opened and bound to disk writer!`);
+          setState('streaming');
+        };
       }
     };
 

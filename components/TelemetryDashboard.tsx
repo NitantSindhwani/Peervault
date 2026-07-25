@@ -6,6 +6,8 @@ import { SpeedGraph } from './SpeedGraph';
 import { NodeTopologyCanvas } from './NodeTopologyCanvas';
 import { SpotlightCard } from './SpotlightCard';
 
+import { getHardwareCapabilities } from '@/lib/hardware/hardware-detector';
+
 export interface TelemetryData {
   transferSpeedMb: number;
   rttMs: number;
@@ -127,7 +129,16 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
           </div>
         </div>
 
-        <div className="flex items-center gap-2 font-mono text-xs">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+          {(() => {
+            const hw = getHardwareCapabilities();
+            return (
+              <span className="px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30 font-semibold flex items-center gap-1.5 text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+                {hw.hardwareTierName} Engine • {hw.cpuCores} Threads • {hw.gpuName} • {hw.ramGB}GB RAM ({hw.ramBudgetMB >= 1024 ? `${(hw.ramBudgetMB / 1024).toFixed(1)}GB` : `${hw.ramBudgetMB}MB`} RAM Budget)
+              </span>
+            );
+          })()}
           <span className="px-2.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] border border-[var(--success)]/30 font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
             {telemetry.connectionType}

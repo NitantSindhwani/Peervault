@@ -9,6 +9,7 @@
 
 export interface PeerConnectionConfig {
   iceServers?: RTCIceServer[];
+  channelCount?: number;
 }
 
 export interface PeerChannels {
@@ -49,15 +50,17 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   });
   controlChannel.binaryType = 'arraybuffer';
 
-  // Primary High-Performance DataChannel
-  const dataChannel = pc.createDataChannel('data_0', {
-    ordered: true,
-  });
-  dataChannel.binaryType = 'arraybuffer';
+  // Dynamic Hardware-Scaled Parallel DataChannels
+  const numChannels = config?.channelCount || (typeof window !== 'undefined' ? Math.min(12, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2))) : 2);
+  const dataChannels: RTCDataChannel[] = [];
 
-  const dataChannels: RTCDataChannel[] = [dataChannel];
+  for (let i = 0; i < numChannels; i++) {
+    const ch = pc.createDataChannel(`data_${i}`, { ordered: true });
+    ch.binaryType = 'arraybuffer';
+    dataChannels.push(ch);
+  }
 
-  // Channel 2: Telemetry (ordered, reliable metrics)
+  // Channel: Telemetry (ordered, reliable metrics)
   const telemetryChannel = pc.createDataChannel('telemetry', {
     ordered: true,
   });

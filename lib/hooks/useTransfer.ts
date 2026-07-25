@@ -101,6 +101,8 @@ export function useTransfer({
   const signalPollerRef = useRef<any>(null);
   const stagingFallbackTimerRef = useRef<any>(null);
   const bcRef = useRef<BroadcastChannel | null>(null);
+  const receiverStartedRef = useRef<string | null>(null);
+  const senderStartedRef = useRef<boolean>(false);
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
@@ -135,6 +137,8 @@ export function useTransfer({
    * Start Sender Transfer Room — 0ms Instant Link Generation (< 3ms total!)
    */
   const startSender = useCallback(async () => {
+    if (senderStartedRef.current) return;
+    senderStartedRef.current = true;
     if (!file) {
       setErrorMsg('No file selected for transfer');
       setState('error');
@@ -248,10 +252,11 @@ export function useTransfer({
 
       const checkChannelsReady = () => {
         if (hasStartedStreaming) return;
-        if (
-          channels.controlChannel.readyState === 'open' &&
-          channels.dataChannel.readyState === 'open'
-        ) {
+        const active = channels.dataChannels || [channels.dataChannel];
+        const isControlOpen = channels.controlChannel.readyState === 'open';
+        const hasAnyDataOpen = active.some((ch) => ch.readyState === 'open') || channels.dataChannel.readyState === 'open';
+        
+        if (isControlOpen || hasAnyDataOpen) {
           triggerStartStream();
         }
       };
@@ -414,6 +419,7 @@ export function useTransfer({
     };
     sendMetadata();
 
+    keepAliveRef.current?.start();
     const bbr = new BBRPacer();
     bbrRef.current = bbr;
     bbr.startPingLoop(channels.controlChannel);
@@ -560,6 +566,11 @@ export function useTransfer({
    * Start Receiver Transfer Room — Reads Offer INSTANTLY from URL Hash (< 1ms!)
    */
   const startReceiver = useCallback(async (targetRoomId: string) => {
+    if (receiverStartedRef.current === targetRoomId) {
+      console.log('[Transfer] Receiver already started for room:', targetRoomId);
+      return;
+    }
+    receiverStartedRef.current = targetRoomId;
     try {
       setRoomId(targetRoomId);
       setState('generating_key');
@@ -617,6 +628,7 @@ export function useTransfer({
       const writer = new DiskWriter(fileName, fileSize);
       await writer.init();
       diskWriterRef.current = writer;
+      keepAliveRef.current?.start();
       setState('negotiating');
 
       // 6. WebRTC path — only if we have a valid SDP offer
@@ -677,6 +689,13 @@ export function useTransfer({
             console.warn('[PeerConnection] Receiver connection failed. Attempting ICE restart...');
             try {
               pc.restartIce();
+              pc.createAnswer().then(async (newAns) => {
+                await pc.setLocalDescription(newAns);
+                sendSignalMessage(cleanRoomId, {
+                  action: 'submit_answer',
+                  answer: pc.localDescription || newAns,
+                });
+              }).catch(() => {});
             } catch {}
           }
         };

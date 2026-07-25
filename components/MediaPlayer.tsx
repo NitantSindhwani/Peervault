@@ -190,7 +190,12 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
       >
         {/* Scrubber Range Input */}
         <div className="space-y-1">
+          <label htmlFor="media-scrubber-input" className="sr-only">
+            Seek Video Time
+          </label>
           <input
+            id="media-scrubber-input"
+            name="mediaScrubber"
             type="range"
             min={0}
             max={duration || 100}
@@ -222,7 +227,12 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
               <button onClick={toggleMute} className="text-[var(--text-secondary)] hover:text-[var(--accent)]">
                 {isMuted || volume === 0 ? <SpeakerSimpleSlash className="w-4 h-4 text-red-400" /> : <SpeakerHigh className="w-4 h-4" />}
               </button>
+              <label htmlFor="media-volume-input" className="sr-only">
+                Volume Control
+              </label>
               <input
+                id="media-volume-input"
+                name="mediaVolume"
                 type="range"
                 min={0}
                 max={1}

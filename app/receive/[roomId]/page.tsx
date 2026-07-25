@@ -86,12 +86,10 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const unlockRoom = async () => {
     setIsUnlocked(true);
     setHasAccepted(true);
-    await startReceiver(roomId);
   };
 
   const handleAcceptTransfer = async () => {
     setHasAccepted(true);
-    await startReceiver(roomId);
   };
 
   const handleBiometricAttest = async () => {

@@ -447,7 +447,12 @@ export default function SendPage() {
               {/* URL Input + Copy */}
               {roomId && (
                 <div className="flex items-center gap-2">
+                  <label htmlFor="share-link-url-input" className="sr-only">
+                    Share Link
+                  </label>
                   <input
+                    id="share-link-url-input"
+                    name="shareLinkUrl"
                     type="text"
                     readOnly
                     value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}

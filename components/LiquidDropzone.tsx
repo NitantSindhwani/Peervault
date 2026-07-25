@@ -163,7 +163,12 @@ export function LiquidDropzone({ onFileSelect, onFolderSelect }: LiquidDropzoneP
         </div>
 
         {/* Hidden File Inputs */}
+        <label htmlFor="liquid-file-input" className="sr-only">
+          Upload File
+        </label>
         <input
+          id="liquid-file-input"
+          name="liquidFile"
           ref={fileInputRef}
           type="file"
           className="hidden"
@@ -176,21 +181,28 @@ export function LiquidDropzone({ onFileSelect, onFolderSelect }: LiquidDropzoneP
         />
 
         {onFolderSelect && (
-          <input
-            ref={folderInputRef}
-            type="file"
-            // @ts-ignore
-            webkitdirectory="true"
-            directory="true"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                soundEngine.playDropImpact();
-                onFolderSelect(e.target.files);
-              }
-            }}
-          />
+          <>
+            <label htmlFor="liquid-folder-input" className="sr-only">
+              Upload Folder
+            </label>
+            <input
+              id="liquid-folder-input"
+              name="liquidFolder"
+              ref={folderInputRef}
+              type="file"
+              // @ts-ignore
+              webkitdirectory="true"
+              directory="true"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  soundEngine.playDropImpact();
+                  onFolderSelect(e.target.files);
+                }
+              }}
+            />
+          </>
         )}
       </div>
     </div>

@@ -27,7 +27,23 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:openrelay.metered.ca:80' },
+  { urls: 'stun:relay.metered.ca:80' },
+  { urls: 'stun:relay.metered.ca:443' },
+  {
+    urls: 'turn:relay.metered.ca:80',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  {
+    urls: 'turn:relay.metered.ca:443',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
+  {
+    urls: 'turn:relay.metered.ca:443?transport=tcp',
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
   {
     urls: 'turn:openrelay.metered.ca:80',
     username: 'openrelay',

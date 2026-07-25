@@ -21,40 +21,31 @@ export class KeepAliveManager {
     if (this.isKeepAliveActive) return;
     this.isKeepAliveActive = true;
 
-    // 1. AudioContext silent loop
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        this.audioContext = new AudioCtx();
-        this.oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-
-        // 0 volume = completely silent
-        gainNode.gain.value = 0.0001;
-        this.oscillator.type = 'sine';
-        this.oscillator.frequency.value = 440;
-
-        this.oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-
-        this.oscillator.start();
-        if (this.audioContext.state === 'suspended') {
-          try {
-            await this.audioContext.resume();
-          } catch {}
-        }
-      }
-    } catch {
-      // AudioContext failed or blocked by policy
-    }
-
+    // 1. AudioContext silent loop - created cleanly on user gesture
     if (typeof document !== 'undefined') {
       const unlockAudio = () => {
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-          try {
-            this.audioContext.resume();
-          } catch {}
-        }
+        try {
+          if (!this.audioContext) {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              this.audioContext = new AudioCtx();
+              this.oscillator = this.audioContext.createOscillator();
+              const gainNode = this.audioContext.createGain();
+
+              gainNode.gain.value = 0.0001;
+              this.oscillator.type = 'sine';
+              this.oscillator.frequency.value = 440;
+
+              this.oscillator.connect(gainNode);
+              gainNode.connect(this.audioContext.destination);
+
+              this.oscillator.start();
+            }
+          }
+          if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume().catch(() => {});
+          }
+        } catch {}
         document.removeEventListener('click', unlockAudio);
         document.removeEventListener('keydown', unlockAudio);
         document.removeEventListener('touchstart', unlockAudio);

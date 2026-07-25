@@ -153,18 +153,18 @@ export default function SendPage() {
         setIsZipping(false);
 
         sfx.playSuccess();
-        startSender();
+        startSender(zippedFile);
       } catch (err) {
         console.error('Zip archiving failure:', err);
         setIsZipping(false);
         alert('Zip archiving failed. Falling back to direct streaming.');
         sfx.playSuccess();
-        startSender();
+        startSender(selectedFile);
       }
     } else {
       // 0s Delay Instant Stream Mode
       sfx.playSuccess();
-      startSender();
+      startSender(selectedFile);
     }
   };
 

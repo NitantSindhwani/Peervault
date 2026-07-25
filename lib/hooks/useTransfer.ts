@@ -136,14 +136,17 @@ export function useTransfer({
   /**
    * Start Sender Transfer Room — 0ms Instant Link Generation (< 3ms total!)
    */
-  const startSender = useCallback(async () => {
-    if (senderStartedRef.current) return;
-    senderStartedRef.current = true;
-    if (!file) {
+  const startSender = useCallback(async (customFile?: File) => {
+    const activeFile = customFile || file;
+    if (!activeFile) {
       setErrorMsg('No file selected for transfer');
       setState('error');
       return;
     }
+    if (senderStartedRef.current) return;
+    senderStartedRef.current = true;
+
+    const fileToStream = activeFile;
 
     try {
       setState('generating_key');
@@ -204,8 +207,8 @@ export function useTransfer({
       const finalOffer = channels.pc.localDescription || offer;
 
       const offerPayload = {
-        fileName: file.name,
-        fileSize: file.size,
+        fileName: fileToStream.name,
+        fileSize: fileToStream.size,
         pubKeyHex,
         sdp: JSON.stringify(finalOffer),
         passphraseRequired: Boolean(passphrase),
@@ -236,8 +239,8 @@ export function useTransfer({
         body: JSON.stringify({
           event: 'room_created',
           roomId: generatedRoomId,
-          fileName: file.name,
-          fileSize: file.size,
+          fileName: fileToStream.name,
+          fileSize: fileToStream.size,
         }),
       }).catch(() => {});
 
@@ -249,7 +252,7 @@ export function useTransfer({
         if (signalPollerRef.current) clearInterval(signalPollerRef.current);
         if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
         setState('connected');
-        startStreamingFile(file);
+        startStreamingFile(fileToStream);
       };
 
       const checkChannelsReady = () => {
@@ -328,10 +331,10 @@ export function useTransfer({
               const chunkSize = 64512;
               let offset = 0;
               let chunkIndex = 0;
-              const totalChunks = Math.ceil(file.size / chunkSize);
+              const totalChunks = Math.ceil(fileToStream.size / chunkSize);
 
-            while (offset < file.size) {
-              const slice = file.slice(offset, offset + chunkSize);
+            while (offset < fileToStream.size) {
+              const slice = fileToStream.slice(offset, offset + chunkSize);
               const buffer = await slice.arrayBuffer();
               
               const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -357,19 +360,19 @@ export function useTransfer({
                   chunkIndex,
                   chunkDataHex: hexStr,
                   totalChunks,
-                  fileName: file.name,
-                  fileSize: file.size,
+                  fileName: fileToStream.name,
+                  fileSize: fileToStream.size,
                 }),
               }).catch(() => {});
 
               offset += slice.size;
               chunkIndex++;
 
-              const progressPercent = Math.min(100, (offset / file.size) * 100);
+              const progressPercent = Math.min(100, (offset / fileToStream.size) * 100);
               setTelemetry((prev) => ({
                 ...prev,
                 bytesTransferred: offset,
-                totalBytes: file.size,
+                totalBytes: fileToStream.size,
                 progressPercent,
                 speedBytesPerSec: 50 * 1024 * 1024,
               }));
@@ -379,7 +382,7 @@ export function useTransfer({
             setState('complete');
           } catch {}
         }
-      }, 15000);
+      }, 1500);
       }
 
       channels.controlChannel.onmessage = (event) => {

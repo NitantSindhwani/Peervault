@@ -35,7 +35,7 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const middleware = proxy;
+export const runtime = 'edge';
 
 export const config = {
   matcher: '/api/:path*',

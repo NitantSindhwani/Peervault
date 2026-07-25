@@ -597,6 +597,10 @@ export function useTransfer({
           lastByteCountRef.current = currentOffset;
           lastSampleTimeRef.current = now;
 
+          const activeChs = channels.dataChannels || [channels.dataChannel];
+          const bufferedAmounts = activeChs.map((ch) => `${ch.label}:${ch.bufferedAmount}`).join(', ');
+          console.log(`[TelemetryLog] currentOffset=${currentOffset}, bytesDiff=${bytesDiff}, bufferedAmounts=[${bufferedAmounts}]`);
+
           speedHistoryRef.current.push(currentSpeed);
           if (speedHistoryRef.current.length > 8) speedHistoryRef.current.shift();
 
@@ -642,7 +646,11 @@ export function useTransfer({
         let burstSent = 0;
         while (preBufferQueue.length > 0 && burstSent < 128) {
           const targetChannel = openChannels[senderProgress.chunkIndex % openChannels.length];
-          if (!backpressure.canSend(targetChannel)) break;
+          const canSend = backpressure.canSend(targetChannel);
+          if (!canSend) {
+            console.log(`[BurstLog] backpressure.canSend=false for ${targetChannel.label}, bufferedAmount=${targetChannel.bufferedAmount}, burstSent=${burstSent}`);
+            break;
+          }
 
           const item = preBufferQueue.shift()!;
           try {
@@ -659,6 +667,9 @@ export function useTransfer({
             await new Promise((r) => setTimeout(r, 2));
             break;
           }
+        }
+        if (burstSent > 0) {
+          console.log(`[BurstLog] burstSent=${burstSent}, preBufferRemaining=${preBufferQueue.length}, senderOffset=${senderProgress.offset}`);
         }
 
         if (burstSent === 0) {

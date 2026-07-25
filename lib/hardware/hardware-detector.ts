@@ -59,25 +59,25 @@ export function getHardwareCapabilities(): HardwareCapabilities {
   const reportedRAM = (navigator as any).deviceMemory || (isMobile ? 4 : 8);
   let ramGB = reportedRAM;
 
-  // Progressive safe RAM allocation budget matrix
-  let ramBudgetMB = 1536;
+  // High-Throughput Safe RAM Allocation Budget Matrix
+  let ramBudgetMB = 3584;
   if (isIOS) {
-    // Safari WebKit memory limit protection: max 384MB to prevent tab eviction
-    ramBudgetMB = 384;
-  } else if (isAndroid) {
-    ramBudgetMB = ramGB <= 4 ? 384 : Math.min(1536, ramGB * 256);
-  } else if (ramGB <= 4) {
+    // Safari WebKit memory limit protection: max 512MB to prevent tab eviction
     ramBudgetMB = 512;
+  } else if (isAndroid) {
+    ramBudgetMB = ramGB <= 4 ? 512 : Math.min(2560, ramGB * 384);
+  } else if (ramGB <= 4) {
+    ramBudgetMB = 1536; // 1.5 GB RAM budget (~37%)
   } else if (ramGB <= 8) {
-    ramBudgetMB = 1536;
+    ramBudgetMB = 3584; // 3.5 GB RAM budget (~44%)
   } else if (ramGB <= 16) {
-    ramBudgetMB = 4096; // 4.0 GB Safe RAM budget
+    ramBudgetMB = 8704; // 8.5 GB High-Speed RAM budget (~53%)
   } else if (ramGB <= 32) {
-    ramBudgetMB = 10240; // 10.0 GB Safe RAM budget
+    ramBudgetMB = 18432; // 18.0 GB High-Speed RAM budget (~56%)
   } else if (ramGB <= 64) {
-    ramBudgetMB = 24576; // 24.0 GB Safe RAM budget
+    ramBudgetMB = 38912; // 38.0 GB Ultra RAM budget (~60%)
   } else {
-    ramBudgetMB = 57344; // 56.0 GB Safe RAM budget for 128GB+ RAM workstations!
+    ramBudgetMB = 81920; // 80.0 GB Ultra RAM budget for 128GB+ workstations (~62%)
   }
 
   // 4. Worker Count & SCTP Channel Scaling

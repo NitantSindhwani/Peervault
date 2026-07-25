@@ -18,7 +18,6 @@ import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
 import { createDeliveryAttestation, WebAuthnAttestationResult } from '@/lib/auth/webauthn';
 import { parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
-import { DebugConsole } from '@/components/DebugConsole';
 import { MediaPlayer } from '@/components/MediaPlayer';
 
 export default function ReceivePage({ params }: { params: Promise<{ roomId: string }> }) {
@@ -29,7 +28,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
 
-  const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, startReceiver, logs, clearLogs } = useTransfer({
+  const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, startReceiver } = useTransfer({
     role: 'receiver',
     roomId,
     passphrase,
@@ -398,8 +397,6 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
         </div>
       )}
 
-      {/* Live Real-Time Diagnostic Logger Console Drawer */}
-      <DebugConsole logs={logs || []} onClear={clearLogs} />
     </div>
   );
 }

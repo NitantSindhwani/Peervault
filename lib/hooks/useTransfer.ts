@@ -210,6 +210,30 @@ export function useTransfer({
       const channels = createSenderPeerConnection();
       peerChannelsRef.current = channels;
 
+      let hasStartedStreaming = false;
+      const triggerStartStream = () => {
+        if (hasStartedStreaming) return;
+        hasStartedStreaming = true;
+        if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+        if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
+        addLog('CHANNEL', 'Sender starting P2P stream to recipient!');
+        setState('connected');
+        startStreamingFile(fileToStream);
+      };
+
+      const pendingReceiverCandidates: RTCIceCandidateInit[] = [];
+
+      const processReceiverCandidate = async (cand: RTCIceCandidateInit) => {
+        if (channels.pc.remoteDescription) {
+          try {
+            await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
+            addLog('ICE', 'Added recipient ICE candidate');
+          } catch {}
+        } else {
+          pendingReceiverCandidates.push(cand);
+        }
+      };
+
       const signaler = new WebSocketSignaler(generatedRoomId, async (msg) => {
         if (msg.action === 'submit_answer' && msg.answer) {
           const ansStr = typeof msg.answer === 'string' ? msg.answer : JSON.stringify(msg.answer);
@@ -220,13 +244,18 @@ export function useTransfer({
               await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
               addLog('SIGNAL', 'Applied recipient SDP Answer via WebSocket!');
               setState('negotiating');
+              
+              // Flush buffered candidates
+              for (const cand of pendingReceiverCandidates) {
+                try {
+                  await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch {}
+              }
+              pendingReceiverCandidates.length = 0;
             } catch {}
           }
         } else if (msg.action === 'submit_receiver_candidate' && msg.candidate) {
-          try {
-            await channels.pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-            addLog('ICE', 'Added recipient ICE candidate via WebSocket');
-          } catch {}
+          await processReceiverCandidate(msg.candidate);
         }
       });
       signaler.connect();
@@ -314,15 +343,6 @@ export function useTransfer({
       }).catch(() => {});
 
       // Setup DataChannel Listeners & Readiness Poller
-      let hasStartedStreaming = false;
-      const triggerStartStream = () => {
-        if (hasStartedStreaming) return;
-        hasStartedStreaming = true;
-        if (signalPollerRef.current) clearInterval(signalPollerRef.current);
-        if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
-        setState('connected');
-        startStreamingFile(fileToStream);
-      };
 
       const checkChannelsReady = () => {
         if (hasStartedStreaming) return;
@@ -563,7 +583,7 @@ export function useTransfer({
     try {
       addLog('INFO', `Starting High-Speed WebRTC P2P Stream (${totalChunksEstimate} chunks)`);
       
-      const PRE_BUFFER_SIZE = 64; // Pre-buffer 64 chunks (16MB) in RAM
+      const PRE_BUFFER_SIZE = 256; // Pre-buffer 256 chunks (64MB) in RAM
       const preBufferQueue: Array<{ chunkIndex: number; packet: Uint8Array }> = [];
       let bufferOffset = 0;
       let bufferChunkIndex = 0;
@@ -595,7 +615,7 @@ export function useTransfer({
         if (bufferOffset >= totalSize) isReadingDone = true;
       };
 
-      // Fill initial 16MB buffer (< 10ms)
+      // Fill initial 64MB buffer (< 10ms)
       await fillPreBuffer();
 
       while (offset < totalSize) {
@@ -605,7 +625,7 @@ export function useTransfer({
 
         const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
         if (openChannels.length === 0) {
-          await new Promise((r) => setTimeout(r, 5));
+          await new Promise((r) => setTimeout(r, 2));
           continue;
         }
 
@@ -617,16 +637,16 @@ export function useTransfer({
           }
         }
 
-        // Fast Micro-Burst: Send up to 16 chunks synchronously per event-loop tick
+        // Ultra-Fast Burst: Send up to 128 chunks (32MB) synchronously per event-loop tick
         let burstSent = 0;
-        while (preBufferQueue.length > 0 && burstSent < 16) {
+        while (preBufferQueue.length > 0 && burstSent < 128) {
           const targetChannel = openChannels[chunkIndex % openChannels.length];
           if (!backpressure.canSend(targetChannel)) break;
 
           const item = preBufferQueue.shift()!;
           try {
             if (bcRef.current) {
-              bcRef.current.postMessage(item.packet.buffer);
+              bcRef.current.postMessage(item.packet.buffer.slice(0));
             }
             targetChannel.send(item.packet as any);
             backpressure.registerSentChunk(item.chunkIndex);
@@ -635,7 +655,7 @@ export function useTransfer({
             burstSent++;
           } catch (sendErr) {
             preBufferQueue.unshift(item);
-            await new Promise((r) => setTimeout(r, 5));
+            await new Promise((r) => setTimeout(r, 2));
             break;
           }
         }
@@ -843,12 +863,22 @@ export function useTransfer({
           }
         );
 
+        const pendingSenderCandidates: RTCIceCandidateInit[] = [];
+
+        const processSenderCandidate = async (cand: RTCIceCandidateInit) => {
+          if (pc.remoteDescription) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+              addLog('ICE', 'Added sender ICE candidate');
+            } catch {}
+          } else {
+            pendingSenderCandidates.push(cand);
+          }
+        };
+
         const signaler = new WebSocketSignaler(cleanRoomId, async (msg) => {
           if (msg.action === 'submit_sender_candidate' && msg.candidate) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
-              addLog('ICE', 'Added sender ICE candidate via WebSocket');
-            } catch {}
+            await processSenderCandidate(msg.candidate);
           }
         });
         signaler.connect();
@@ -882,6 +912,14 @@ export function useTransfer({
 
         const offerSDP = JSON.parse(offerPayload.sdp);
         await pc.setRemoteDescription(new RTCSessionDescription(offerSDP));
+
+        // Flush buffered sender candidates
+        for (const cand of pendingSenderCandidates) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(cand));
+          } catch {}
+        }
+        pendingSenderCandidates.length = 0;
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -985,6 +1023,10 @@ export function useTransfer({
     let actualFileSize = fileSize;
     let actualFileName = fileName;
 
+    lastSampleTimeRef.current = Date.now();
+    lastByteCountRef.current = 0;
+    let currentSpeed = 0;
+
     if (controlChannel && 'binaryType' in controlChannel) {
       controlChannel.binaryType = 'arraybuffer';
 
@@ -1050,23 +1092,26 @@ export function useTransfer({
 
           const now = Date.now();
           const timeDiff = (now - lastSampleTimeRef.current) / 1000;
-          let currentSpeed = telemetry.speedBytesPerSec;
-          if (timeDiff >= 0.5) {
+          if (timeDiff >= 0.2) {
             const bytesDiff = receivedBytes - lastByteCountRef.current;
             currentSpeed = bytesDiff / timeDiff;
             lastByteCountRef.current = receivedBytes;
             lastSampleTimeRef.current = now;
           }
 
-          setTelemetry((prev) => ({
-            ...prev,
+          setTelemetry({
             bytesTransferred: receivedBytes,
             totalBytes: targetSize,
             totalChunks: totalChunksEst,
             progressPercent,
             speedBytesPerSec: currentSpeed,
+            rttMs: 0,
             chunkIndex: chunkCount,
-          }));
+            bbrState: 'STREAMING',
+            connectionType: 'direct_host',
+            merkleRoot: null,
+            etaString: formatETA(targetSize - receivedBytes, currentSpeed),
+          });
 
           if (chunkCount % 50 === 0 && roomId) {
             saveResumeSession({
@@ -1148,7 +1193,5 @@ export function useTransfer({
     receivedFileName,
     startSender,
     startReceiver,
-    logs,
-    clearLogs,
   };
 }

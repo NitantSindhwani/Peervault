@@ -62,7 +62,24 @@ if (!globalForSignal.cleanupInterval) {
   }, 60000);
 }
 
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function isRateLimited(ip: string, limit = 300): boolean {
+  const now = Date.now();
+  const current = rateLimitMap.get(ip);
+  if (!current || now > current.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + 60000 });
+    return false;
+  }
+  current.count += 1;
+  return current.count > limit;
+}
+
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+  if (isRateLimited(ip, 300)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
   try {
     const body = await request.json();
     const { roomId, action, offer, answer, candidate, chunkIndex, chunkDataHex, chunkDataB64, totalChunks, fileName, fileSize } = body;

@@ -113,11 +113,6 @@ export function useTransfer({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId: targetRoomId, ...payload }),
     }).catch(() => {});
-
-    fetch(`https://ntfy.sh/peervault_signal_${targetRoomId}`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }).catch(() => {});
   }, []);
 
   // Initialize WorkerPool and KeepAlive
@@ -297,36 +292,8 @@ export function useTransfer({
           }
         } catch {}
 
-        // Global PubSub relay poll for Vercel cross-instance synchronization
-        try {
-          const ntfyRes = await fetch(`https://ntfy.sh/peervault_signal_${generatedRoomId}/json?poll=1`);
-          const text = await ntfyRes.text();
-          const lines = text.trim().split('\n');
-          for (const line of lines) {
-            if (!line) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.message) {
-                const payload = JSON.parse(msg.message);
-                if (payload.action === 'submit_answer' && payload.answer && channels.pc.signalingState !== 'stable') {
-                  await channels.pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-                  setState('negotiating');
-                } else if (payload.action === 'submit_receiver_candidate' && payload.candidate && channels.pc.remoteDescription) {
-                  const key = JSON.stringify(payload.candidate);
-                  if (!processedReceiverCandidates.has(key)) {
-                    processedReceiverCandidates.add(key);
-                    try {
-                      await channels.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-                    } catch {}
-                  }
-                }
-              }
-            } catch {}
-          }
-        } catch {}
-
         checkChannelsReady();
-      }, 800);
+      }, 1200);
 
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
@@ -754,32 +721,7 @@ export function useTransfer({
               }
             }
           } catch {}
-
-          // Global PubSub relay poll for Vercel cross-instance synchronization
-          try {
-            const ntfyRes = await fetch(`https://ntfy.sh/peervault_signal_${cleanRoomId}/json?poll=1`);
-            const text = await ntfyRes.text();
-            const lines = text.trim().split('\n');
-            for (const line of lines) {
-              if (!line) continue;
-              try {
-                const msg = JSON.parse(line);
-                if (msg.message) {
-                  const payload = JSON.parse(msg.message);
-                  if (payload.action === 'submit_sender_candidate' && payload.candidate && pc.remoteDescription) {
-                    const key = JSON.stringify(payload.candidate);
-                    if (!processedSenderCandidates.has(key)) {
-                      processedSenderCandidates.add(key);
-                      try {
-                        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-                      } catch {}
-                    }
-                  }
-                }
-              } catch {}
-            }
-          } catch {}
-        }, 800);
+        }, 1200);
       }
     } catch (err: any) {
       console.error('[Transfer] Receiver error:', err);

@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-  { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+  { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -13,7 +13,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-      "connect-src 'self' https://stun.l.google.com",
+      "connect-src 'self' wss: https: stun: turn:",
       "worker-src 'self' blob:",
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",

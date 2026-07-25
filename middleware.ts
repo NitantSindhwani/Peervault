@@ -8,7 +8,8 @@ export function middleware(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const now = Date.now();
     const windowMs = 60 * 1000; // 1 minute window
-    const limit = 30; // 30 requests per minute
+    const isSignal = request.nextUrl.pathname.startsWith('/api/signal');
+    const limit = isSignal ? 300 : 60; // 300/min for WebRTC signaling
 
     const current = rateLimitMap.get(ip);
 

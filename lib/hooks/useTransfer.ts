@@ -108,14 +108,50 @@ export function useTransfer({
   const lastByteCountRef = useRef<number>(0);
   const lastSampleTimeRef = useRef<number>(Date.now());
 
+  const [logs, setLogs] = useState<{ id: string; timestamp: string; category: 'ICE' | 'SIGNAL' | 'CHANNEL' | 'ERROR' | 'DATA' | 'INFO'; message: string }[]>([]);
+
+  const addLog = useCallback((category: 'ICE' | 'SIGNAL' | 'CHANNEL' | 'ERROR' | 'DATA' | 'INFO', message: string) => {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const entry = {
+      id: `${Date.now()}_${Math.random()}`,
+      timestamp,
+      category,
+      message,
+    };
+    setLogs((prev) => [...prev.slice(-150), entry]);
+    console.log(`[${category}] ${message}`);
+  }, []);
+
+  const clearLogs = useCallback(() => setLogs([]), []);
+
+  // Window error & unhandled rejection global diagnostic capturer
+  useEffect(() => {
+    const handleErr = (event: ErrorEvent) => {
+      addLog('ERROR', `Uncaught JS Error: ${event.message} (${event.filename}:${event.lineno})`);
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const msg = event.reason?.message || String(event.reason || 'Unhandled Promise Rejection');
+      addLog('ERROR', `Unhandled Promise Rejection: ${msg}`);
+    };
+    window.addEventListener('error', handleErr);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleErr);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, [addLog]);
+
   // Universal Cross-Region Signaling Relay Helper (Local API + Global PubSub)
   const sendSignalMessage = useCallback((targetRoomId: string, payload: any) => {
+    addLog('SIGNAL', `POST /api/signal action: ${payload.action || 'send'}`);
     fetch('/api/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId: targetRoomId, ...payload }),
-    }).catch(() => {});
-  }, []);
+    }).catch((err) => {
+      addLog('ERROR', `POST /api/signal failed: ${err.message}`);
+    });
+  }, [addLog]);
 
   // Initialize WorkerPool and KeepAlive
   useEffect(() => {
@@ -149,6 +185,7 @@ export function useTransfer({
     const fileToStream = activeFile;
 
     try {
+      addLog('INFO', `Starting sender node for file: ${fileToStream.name} (${(fileToStream.size / (1024 * 1024)).toFixed(2)} MB)`);
       setState('generating_key');
       // 1. Generate local ECDH Keypair (< 1ms)
       const keyPair = await generateECDHKeyPair();
@@ -160,15 +197,17 @@ export function useTransfer({
         .join('');
 
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
+      addLog('INFO', `Generated room ID: ${generatedRoomId}`);
 
       const channels = createSenderPeerConnection();
       peerChannelsRef.current = channels;
 
       channels.pc.onconnectionstatechange = () => {
+        addLog('CHANNEL', `Sender connection state: ${channels.pc.connectionState}`);
         if (channels.pc.connectionState === 'connected') {
           triggerStartStream();
         } else if (channels.pc.connectionState === 'failed') {
-          console.warn('[PeerConnection] Connection failed. Triggering ICE restart...');
+          addLog('ERROR', 'Sender WebRTC connection failed. Triggering ICE restart...');
           try {
             channels.pc.restartIce();
             channels.pc.createOffer().then(async (offer) => {
@@ -182,9 +221,9 @@ export function useTransfer({
         }
       };
 
-      // Handle Sender ICE Candidates and submit to signal relays
       channels.pc.onicecandidate = async (event) => {
         if (event.candidate) {
+          addLog('ICE', `Sender gathered ICE candidate: ${event.candidate.type} ${event.candidate.protocol} ${event.candidate.address || ''}`);
           sendSignalMessage(generatedRoomId, {
             action: 'submit_sender_candidate',
             candidate: event.candidate.toJSON(),
@@ -962,5 +1001,7 @@ export function useTransfer({
     receivedFileName,
     startSender,
     startReceiver,
+    logs,
+    clearLogs,
   };
 }

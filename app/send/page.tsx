@@ -26,6 +26,8 @@ import { FolderTreeViewer } from '@/components/FolderTreeViewer';
 import { archiveFilesToZip } from '@/lib/zip/zip-archiver';
 import { sfx } from '@/lib/audio/sfx';
 
+import { DebugConsole } from '@/components/DebugConsole';
+
 export default function SendPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -46,7 +48,7 @@ export default function SendPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const { state, errorMsg, roomId, shareUrl, telemetry, startSender } = useTransfer({
+  const { state, errorMsg, roomId, shareUrl, telemetry, startSender, logs, clearLogs } = useTransfer({
     role: 'sender',
     file: selectedFile,
     passphrase,
@@ -564,6 +566,8 @@ export default function SendPage() {
         </div>
       )}
 
+      {/* Live Real-Time Diagnostic Logger Console Drawer */}
+      <DebugConsole logs={logs || []} onClear={clearLogs} />
     </div>
   );
 }

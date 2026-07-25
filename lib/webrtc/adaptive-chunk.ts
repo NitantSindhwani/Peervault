@@ -8,7 +8,7 @@
 
 export class AdaptiveChunkScaler {
   private currentChunkSize: number = 256 * 1024; // 256KB default
-  private minChunkSize: number = 32 * 1024;      // 32KB min
+  private minChunkSize: number = 64 * 1024;      // 64KB min
   private maxChunkSize: number = 256 * 1024;     // 256KB max
   private stableWindowCount: number = 0;
   private lossCount: number = 0;

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // Global Persistent In-Memory Signaling & Staging Caches
 const globalForSignal = globalThis as unknown as {
@@ -14,6 +17,35 @@ const stagingCache = globalForSignal.stagingCache || new Map();
 globalForSignal.signalCache = signalCache;
 globalForSignal.stagingCache = stagingCache;
 
+function getTmpFilePath(roomId: string): string {
+  const cleanId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
+  return path.join(os.tmpdir(), `pv_sig_${cleanId}.json`);
+}
+
+async function readSignalState(roomId: string) {
+  let state = signalCache.get(roomId);
+  if (!state) {
+    try {
+      const filePath = getTmpFilePath(roomId);
+      if (fs.existsSync(filePath)) {
+        const raw = await fs.promises.readFile(filePath, 'utf-8');
+        state = JSON.parse(raw);
+        if (state) signalCache.set(roomId, state);
+      }
+    } catch {}
+  }
+  return state || { senderCandidates: [], receiverCandidates: [], updatedAt: Date.now() };
+}
+
+async function writeSignalState(roomId: string, state: any) {
+  state.updatedAt = Date.now();
+  signalCache.set(roomId, state);
+  try {
+    const filePath = getTmpFilePath(roomId);
+    await fs.promises.writeFile(filePath, JSON.stringify(state), 'utf-8');
+  } catch {}
+}
+
 // Cleanup stale entries every 60 seconds
 if (!globalForSignal.cleanupInterval) {
   globalForSignal.cleanupInterval = setInterval(() => {
@@ -21,11 +53,10 @@ if (!globalForSignal.cleanupInterval) {
     for (const [roomId, item] of signalCache.entries()) {
       if (now - item.updatedAt > 600000) { // 10 minutes for signaling
         signalCache.delete(roomId);
-      }
-    }
-    for (const [roomId, item] of stagingCache.entries()) {
-      if (now - item.updatedAt > 24 * 60 * 60 * 1000) { // 24 hours for staging
-        stagingCache.delete(roomId);
+        try {
+          const filePath = getTmpFilePath(roomId);
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        } catch {}
       }
     }
   }, 60000);
@@ -40,19 +71,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
     }
 
-    const current = signalCache.get(roomId) || { senderCandidates: [], receiverCandidates: [], updatedAt: Date.now() };
+    const current = await readSignalState(roomId);
 
     if (action === 'submit_offer') {
       current.offer = offer;
-      current.updatedAt = Date.now();
-      signalCache.set(roomId, current);
+      await writeSignalState(roomId, current);
       return NextResponse.json({ success: true });
     }
 
     if (action === 'submit_answer') {
       current.answer = answer;
-      current.updatedAt = Date.now();
-      signalCache.set(roomId, current);
+      await writeSignalState(roomId, current);
       return NextResponse.json({ success: true });
     }
 
@@ -62,8 +91,7 @@ export async function POST(request: NextRequest) {
         if (current.senderCandidates.length < 50) {
           current.senderCandidates.push(candidate);
         }
-        current.updatedAt = Date.now();
-        signalCache.set(roomId, current);
+        await writeSignalState(roomId, current);
       }
       return NextResponse.json({ success: true });
     }
@@ -74,8 +102,7 @@ export async function POST(request: NextRequest) {
         if (current.receiverCandidates.length < 50) {
           current.receiverCandidates.push(candidate);
         }
-        current.updatedAt = Date.now();
-        signalCache.set(roomId, current);
+        await writeSignalState(roomId, current);
       }
       return NextResponse.json({ success: true });
     }
@@ -84,10 +111,6 @@ export async function POST(request: NextRequest) {
     if (action === 'submit_staging') {
       let staging = stagingCache.get(roomId);
       if (!staging) {
-        if (stagingCache.size > 50) {
-          const oldestKey = stagingCache.keys().next().value;
-          if (oldestKey) stagingCache.delete(oldestKey);
-        }
         staging = {
           chunks: new Map<number, string>(),
           updatedAt: Date.now(),
@@ -136,7 +159,6 @@ export async function GET(request: NextRequest) {
     const receivedCount = staging.chunks.size;
     const totalCount = staging.totalChunks;
 
-    // Only return chunks once ALL have been received to prevent partial file assembly
     if (receivedCount < totalCount) {
       return NextResponse.json({
         available: false,
@@ -146,7 +168,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Sort chunks by index to guarantee correct byte order
     const chunksArray: { index: number; dataHex: string }[] = [];
     for (const [index, dataHex] of staging.chunks.entries()) {
       chunksArray.push({ index, dataHex });
@@ -162,9 +183,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const signal = signalCache.get(roomId);
+  const signal = await readSignalState(roomId);
 
-  if (!signal) {
+  if (!signal || (!signal.offer && !signal.answer)) {
     return NextResponse.json({ waiting: true });
   }
 

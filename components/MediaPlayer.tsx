@@ -47,6 +47,7 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
     media.addEventListener('ended', onEnded);
 
     return () => {
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       media.removeEventListener('timeupdate', onTimeUpdate);
       media.removeEventListener('loadedmetadata', onLoadedMetadata);
       media.removeEventListener('ended', onEnded);

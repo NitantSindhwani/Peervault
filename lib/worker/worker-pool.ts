@@ -112,9 +112,9 @@ export class WorkerPool {
 
     return new Promise((resolve, reject) => {
       this.pendingTasks.set(id, { resolve, reject });
-      const request: WorkerTaskRequest = { ...task, id };
-      // Transfer buffer for zero-copy
-      worker.postMessage(request, [task.buffer]);
+      const bufferCopy = task.buffer.slice(0);
+      const request: WorkerTaskRequest = { ...task, buffer: bufferCopy, id };
+      worker.postMessage(request, [bufferCopy]);
     });
   }
 

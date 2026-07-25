@@ -119,11 +119,12 @@ export class DiskWriter {
     if (this.useDBPaging) {
       try {
         const db = await openDiskDB();
+        const paddedIndex = this.chunkIndex.toString().padStart(10, '0');
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction(STORE_NAME, 'readwrite');
           const store = tx.objectStore(STORE_NAME);
           store.put({
-            id: `${this.streamId}_${this.chunkIndex}`,
+            id: `${this.streamId}_${paddedIndex}`,
             streamId: this.streamId,
             chunkIndex: this.chunkIndex,
             data: chunk.slice(0),
@@ -135,7 +136,8 @@ export class DiskWriter {
         this.writtenSize += chunk.byteLength;
         return;
       } catch {
-        // Fallback to memory array if IndexedDB fails
+        this.useDBPaging = false;
+        this.tier = 'memory_blob';
       }
     }
 
@@ -177,7 +179,8 @@ export class DiskWriter {
         const cleanupTx = db.transaction(STORE_NAME, 'readwrite');
         const cleanupStore = cleanupTx.objectStore(STORE_NAME);
         for (let i = 0; i < this.chunkIndex; i++) {
-          cleanupStore.delete(`${this.streamId}_${i}`);
+          const paddedIndex = i.toString().padStart(10, '0');
+          cleanupStore.delete(`${this.streamId}_${paddedIndex}`);
         }
 
         const blob = new Blob(assembledBuffers, { type: this.mimeType });
@@ -193,6 +196,7 @@ export class DiskWriter {
       .map((entry) => entry[1]);
 
     const blob = new Blob(sortedChunks, { type: this.mimeType });
+    this.memoryChunksMap.clear();
     const downloadUrl = URL.createObjectURL(blob);
     return { downloadUrl, blob, tier: this.tier };
   }

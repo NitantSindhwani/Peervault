@@ -181,11 +181,22 @@ export function useTransfer({
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
 
+      await new Promise<void>((r) => {
+        if (channels.pc.iceGatheringState === 'complete') return r();
+        const onIce = () => {
+          if (channels.pc.iceGatheringState === 'complete') r();
+        };
+        channels.pc.addEventListener('icegatheringstatechange', onIce);
+        setTimeout(r, 400);
+      });
+
+      const finalOffer = channels.pc.localDescription || offer;
+
       const offerPayload = {
         fileName: file.name,
         fileSize: file.size,
         pubKeyHex,
-        sdp: JSON.stringify(offer),
+        sdp: JSON.stringify(finalOffer),
         passphraseRequired: Boolean(passphrase),
         ttlHours,
         maxDownloads,
@@ -705,10 +716,21 @@ export function useTransfer({
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
+        await new Promise<void>((r) => {
+          if (pc.iceGatheringState === 'complete') return r();
+          const onIce = () => {
+            if (pc.iceGatheringState === 'complete') r();
+          };
+          pc.addEventListener('icegatheringstatechange', onIce);
+          setTimeout(r, 400);
+        });
+
+        const finalAnswer = pc.localDescription || answer;
+
         // Submit SDP Answer to dual signaling relays
         sendSignalMessage(cleanRoomId, {
           action: 'submit_answer',
-          answer,
+          answer: finalAnswer,
         });
 
         const processedSenderCandidates = new Set<string>();

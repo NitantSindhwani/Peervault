@@ -294,11 +294,14 @@ export default function SendPage() {
 
             {/* Optional Passphrase */}
             <div className="space-y-2">
-              <label className="block text-xs font-mono text-[var(--text-primary)]">
+              <label htmlFor="passphrase-input" className="block text-xs font-mono text-[var(--text-primary)]">
                 Optional Password Lock
               </label>
               <input
-                type="text"
+                id="passphrase-input"
+                name="passphrase"
+                type="password"
+                autoComplete="new-password"
                 placeholder="Set optional password for recipient"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}

@@ -195,8 +195,14 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           </div>
 
           <div className="space-y-4">
+            <label htmlFor="receive-passphrase-input" className="sr-only">
+              Enter transfer password
+            </label>
             <input
+              id="receive-passphrase-input"
+              name="passphrase"
               type="password"
+              autoComplete="current-password"
               placeholder="Enter transfer password..."
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}

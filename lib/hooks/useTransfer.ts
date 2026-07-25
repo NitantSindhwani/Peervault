@@ -159,7 +159,17 @@ export function useTransfer({
 
       channels.pc.onconnectionstatechange = () => {
         if (channels.pc.connectionState === 'failed') {
-          console.warn('[PeerConnection] Connection state failed');
+          console.warn('[PeerConnection] Connection failed. Triggering ICE restart...');
+          try {
+            channels.pc.restartIce();
+            channels.pc.createOffer().then(async (offer) => {
+              await channels.pc.setLocalDescription(offer);
+              sendSignalMessage(generatedRoomId, {
+                action: 'submit_offer',
+                offer: { ...offerPayload, sdp: JSON.stringify(channels.pc.localDescription) },
+              });
+            }).catch(() => {});
+          } catch {}
         }
       };
 
@@ -664,7 +674,10 @@ export function useTransfer({
 
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === 'failed') {
-            console.warn('[PeerConnection] Receiver connection failed');
+            console.warn('[PeerConnection] Receiver connection failed. Attempting ICE restart...');
+            try {
+              pc.restartIce();
+            } catch {}
           }
         };
 

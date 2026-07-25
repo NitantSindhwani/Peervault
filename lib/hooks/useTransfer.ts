@@ -626,23 +626,24 @@ export function useTransfer({
         .join('');
 
       // 5. Setup DiskWriter & Transition State
+      const writer = new DiskWriter(fileName, fileSize);
+      await writer.init();
+      diskWriterRef.current = writer;
       setState('negotiating');
 
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
-        // Ref to dynamically attach incoming parallel channels to handlePacket
-        const packetHandlerRef = { current: null as any };
+        let currentPacketHandler: any = null;
 
-        const ensureListeners = () => {
-          if (!packetHandlerRef.current) {
-            packetHandlerRef.current = setupReceiverChannelListeners(
-              {} as any,
-              {} as any,
-              fileName,
-              fileSize
-            );
+        const attachChannelListener = (channel: RTCDataChannel) => {
+          if (channel) {
+            channel.binaryType = 'arraybuffer';
+            channel.onmessage = (event) => {
+              if (currentPacketHandler) {
+                currentPacketHandler(event);
+              }
+            };
           }
-          return packetHandlerRef.current;
         };
 
         if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -651,9 +652,8 @@ export function useTransfer({
           bc.postMessage({ type: 'receiver_ready' });
           bc.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer || event.data?.buffer instanceof ArrayBuffer) {
-              const handler = ensureListeners();
-              if (handler) {
-                handler({ data: event.data } as MessageEvent);
+              if (currentPacketHandler) {
+                currentPacketHandler({ data: event.data } as MessageEvent);
               }
             }
           };
@@ -665,19 +665,22 @@ export function useTransfer({
           (channels) => {
             if (channels.controlChannel && channels.dataChannel) {
               setState('connected');
-              const packetHandler = setupReceiverChannelListeners(
+              currentPacketHandler = setupReceiverChannelListeners(
                 channels.controlChannel,
                 channels.dataChannel,
                 fileName,
                 fileSize,
                 channels.dataChannels
               );
-              packetHandlerRef.current = packetHandler;
+              if (channels.dataChannels) {
+                for (const ch of channels.dataChannels) {
+                  attachChannelListener(ch);
+                }
+              }
             }
           },
           (newChannel) => {
-            const handler = ensureListeners();
-            if (handler) handler(newChannel);
+            attachChannelListener(newChannel);
           }
         );
 
@@ -832,7 +835,9 @@ export function useTransfer({
           chunkCount++;
 
           try {
-            controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+            if (controlChannel && controlChannel.readyState === 'open') {
+              controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+            }
           } catch {}
 
           const targetSize = actualFileSize || fileSize || receivedBytes;
@@ -892,8 +897,8 @@ export function useTransfer({
               body: JSON.stringify({
                 event: 'transfer_completed',
                 roomId: roomId?.split('#')[0] || 'unknown',
-                fileName,
-                fileSize,
+                fileName: actualFileName,
+                fileSize: targetSize,
               }),
             }).catch(() => {});
           }
@@ -915,7 +920,7 @@ export function useTransfer({
       setupChannel(ch);
     }
 
-    return setupChannel;
+    return handlePacket;
   };
 
   useEffect(() => {

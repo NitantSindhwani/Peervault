@@ -13,11 +13,11 @@ export interface WindowMetrics {
 }
 
 export class BackpressureController {
-  private windowSize: number = 256;
+  private windowSize: number = 4096; // 4096 chunks (up to 1GB window)
   private unacknowledged: Set<number> = new Set();
   private bufferedAmountLowThreshold: number = 2 * 1024 * 1024; // 2MB
-  private maxBufferedAmount: number = 128 * 1024 * 1024;   // 128MB per channel
-  private minBufferedAmount: number = 16 * 1024 * 1024;    // 16MB
+  private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB per channel
+  private minBufferedAmount: number = 4 * 1024 * 1024;    // 4MB
   private isPaused: boolean = false;
   private onPauseStateChange?: (isPaused: boolean) => void;
 
@@ -32,7 +32,7 @@ export class BackpressureController {
     dataChannel.bufferedAmountLowThreshold = this.bufferedAmountLowThreshold;
 
     dataChannel.onbufferedamountlow = () => {
-      if (this.isPaused && dataChannel.bufferedAmount <= this.minBufferedAmount) {
+      if (dataChannel.bufferedAmount <= this.minBufferedAmount) {
         this.setPaused(false);
       }
     };
@@ -45,6 +45,10 @@ export class BackpressureController {
     if (dataChannel.bufferedAmount >= this.maxBufferedAmount) {
       if (!this.isPaused) this.setPaused(true);
       return false;
+    }
+
+    if (dataChannel.bufferedAmount <= this.minBufferedAmount && this.isPaused) {
+      this.setPaused(false);
     }
 
     if (this.unacknowledged.size >= this.windowSize) {
@@ -75,7 +79,7 @@ export class BackpressureController {
    * Dynamic window adjustment based on disk write speeds
    */
   public adjustWindowSize(newSize: number): void {
-    this.windowSize = Math.max(16, Math.min(512, newSize));
+    this.windowSize = Math.max(256, Math.min(8192, newSize));
   }
 
   private setPaused(paused: boolean): void {

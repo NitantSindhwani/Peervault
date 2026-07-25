@@ -110,6 +110,7 @@ export function useTransfer({
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
   const lastSampleTimeRef = useRef<number>(Date.now());
+  const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [logs, setLogs] = useState<{ id: string; timestamp: string; category: 'ICE' | 'SIGNAL' | 'CHANNEL' | 'ERROR' | 'DATA' | 'INFO'; message: string }[]>([]);
 
@@ -172,9 +173,49 @@ export function useTransfer({
       keepAliveRef.current?.stop();
       bbrRef.current?.stopPingLoop();
       if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+      if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
       if (bcRef.current) bcRef.current.close();
       peerChannelsRef.current?.pc.close();
     };
+  }, []);
+
+  const resetTransfer = useCallback(() => {
+    senderStartedRef.current = false;
+    receiverStartedRef.current = null;
+    lastAppliedAnswerRef.current = null;
+
+    if (telemetryIntervalRef.current) {
+      clearInterval(telemetryIntervalRef.current);
+      telemetryIntervalRef.current = null;
+    }
+    if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+    if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
+    if (peerChannelsRef.current?.pc) {
+      try { peerChannelsRef.current.pc.close(); } catch {}
+      peerChannelsRef.current = null;
+    }
+    if (wsSignalerRef.current) {
+      try { wsSignalerRef.current.close(); } catch {}
+      wsSignalerRef.current = null;
+    }
+
+    setRoomId(null);
+    setShareUrl(null);
+    setState('idle');
+    setErrorMsg(null);
+    setTelemetry({
+      bytesTransferred: 0,
+      totalBytes: 0,
+      progressPercent: 0,
+      speedBytesPerSec: 0,
+      rttMs: 0,
+      chunkIndex: 0,
+      totalChunks: 0,
+      bbrState: 'STARTUP',
+      connectionType: 'direct_host',
+      merkleRoot: null,
+      etaString: '--',
+    });
   }, []);
 
   /**
@@ -187,7 +228,22 @@ export function useTransfer({
       setState('error');
       return;
     }
-    if (senderStartedRef.current) return;
+    
+    // Clean up any previous session if re-starting
+    if (peerChannelsRef.current?.pc) {
+      try { peerChannelsRef.current.pc.close(); } catch {}
+      peerChannelsRef.current = null;
+    }
+    if (wsSignalerRef.current) {
+      try { wsSignalerRef.current.close(); } catch {}
+      wsSignalerRef.current = null;
+    }
+    if (telemetryIntervalRef.current) {
+      clearInterval(telemetryIntervalRef.current);
+      telemetryIntervalRef.current = null;
+    }
+    lastAppliedAnswerRef.current = null;
+
     senderStartedRef.current = true;
 
     const fileToStream = activeFile;
@@ -530,7 +586,7 @@ export function useTransfer({
       await fillPreBuffer();
 
       // Steady 200ms Telemetry Timer (reads mutable senderProgress object to avoid closure stale values)
-      const telemetryInterval = setInterval(() => {
+      telemetryIntervalRef.current = setInterval(() => {
         const now = Date.now();
         const timeDiff = (now - lastSampleTimeRef.current) / 1000;
         if (timeDiff >= 0.2) {
@@ -629,13 +685,16 @@ export function useTransfer({
         }
       }
 
-      clearInterval(telemetryInterval);
+      if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+      telemetryIntervalRef.current = null;
 
       if (roomId) removeResumeSession(roomId);
       setState('verifying');
       setState('complete');
     } catch (err: any) {
       console.error('[Transfer] Streaming error:', err);
+      if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+      telemetryIntervalRef.current = null;
       setErrorMsg(err.message || 'Stream transmission failed');
       setState('error');
     }
@@ -1114,5 +1173,6 @@ export function useTransfer({
     receivedFileName,
     startSender,
     startReceiver,
+    resetTransfer,
   };
 }

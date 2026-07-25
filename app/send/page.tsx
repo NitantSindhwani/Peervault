@@ -46,7 +46,7 @@ export default function SendPage() {
 
   const [copied, setCopied] = useState(false);
 
-  const { state, errorMsg, roomId, shareUrl, telemetry, startSender } = useTransfer({
+  const { state, errorMsg, roomId, shareUrl, telemetry, startSender, resetTransfer } = useTransfer({
     role: 'sender',
     file: selectedFile,
     passphrase,
@@ -57,6 +57,13 @@ export default function SendPage() {
   });
 
   const isTransferring = state !== 'idle';
+
+  const handleSendAnotherFile = () => {
+    resetTransfer();
+    setSelectedFile(null);
+    setRawFiles([]);
+    setDirectoryNodes(null);
+  };
 
   // PWA Native File Launch Handler
   useEffect(() => {
@@ -77,6 +84,8 @@ export default function SendPage() {
   const handleBatchFileSelect = (files: FileList | File[]) => {
     const filesArray = Array.from(files);
     if (filesArray.length === 0) return;
+
+    resetTransfer();
 
     if (filesArray.length === 1) {
       setSelectedFile(filesArray[0]);
@@ -452,9 +461,9 @@ export default function SendPage() {
                 </p>
               </div>
 
-              {/* URL Input + Copy */}
+              {/* URL Input + Copy + Send Another */}
               {roomId && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <label htmlFor="share-link-url-input" className="sr-only">
                     Share Link
                   </label>
@@ -466,13 +475,22 @@ export default function SendPage() {
                     value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
                     className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)]"
                   />
-                  <button
-                    onClick={copyShareUrl}
-                    className="px-5 py-3 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-lg glow-amber"
-                  >
-                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    <span>{copied ? 'Copied Link!' : 'Copy Share Link'}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={copyShareUrl}
+                      className="px-5 py-3 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 flex items-center gap-1.5 shrink-0 cursor-pointer shadow-lg glow-amber"
+                    >
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      <span>{copied ? 'Copied Link!' : 'Copy Share Link'}</span>
+                    </button>
+                    <button
+                      onClick={handleSendAnotherFile}
+                      className="px-4 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] text-[var(--text-primary)] font-mono text-xs font-bold hover:border-[var(--accent)] flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <ArrowsClockwise className="w-4 h-4 text-[var(--accent)]" />
+                      <span>Send Another File</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

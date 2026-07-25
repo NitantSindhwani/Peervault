@@ -55,7 +55,7 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   const dataChannels: RTCDataChannel[] = [];
 
   for (let i = 0; i < numChannels; i++) {
-    const ch = pc.createDataChannel(`data_${i}`, { ordered: true });
+    const ch = pc.createDataChannel(`data_${i}`, { ordered: false });
     ch.binaryType = 'arraybuffer';
     dataChannels.push(ch);
   }

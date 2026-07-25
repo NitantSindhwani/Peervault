@@ -567,8 +567,7 @@ export function useTransfer({
     merkleTreeRef.current = merkleTree;
 
     const totalSize = inputFile.size;
-    let offset = 0;
-    let chunkIndex = 0;
+    const senderProgress = { offset: 0, chunkIndex: 0 };
     const totalChunksEstimate = Math.ceil(totalSize / scaler.getChunkSize());
 
     lastByteCountRef.current = 0;
@@ -618,7 +617,41 @@ export function useTransfer({
       // Fill initial 64MB buffer (< 10ms)
       await fillPreBuffer();
 
-      while (offset < totalSize) {
+      // Steady 200ms Telemetry Timer (reads mutable senderProgress object to avoid closure stale values)
+      const telemetryInterval = setInterval(() => {
+        const now = Date.now();
+        const timeDiff = (now - lastSampleTimeRef.current) / 1000;
+        if (timeDiff >= 0.2) {
+          const currentOffset = senderProgress.offset;
+          const currentChunkIndex = senderProgress.chunkIndex;
+          const bytesDiff = Math.max(0, currentOffset - lastByteCountRef.current);
+          const currentSpeed = bytesDiff / timeDiff;
+          lastByteCountRef.current = currentOffset;
+          lastSampleTimeRef.current = now;
+
+          speedHistoryRef.current.push(currentSpeed);
+          if (speedHistoryRef.current.length > 8) speedHistoryRef.current.shift();
+
+          const avgSpeed = speedHistoryRef.current.reduce((a, b) => a + b, 0) / speedHistoryRef.current.length;
+          const progressPercent = Math.min(100, (currentOffset / totalSize) * 100);
+
+          setTelemetry({
+            bytesTransferred: currentOffset,
+            totalBytes: totalSize,
+            progressPercent,
+            speedBytesPerSec: Math.max(0, currentSpeed),
+            rttMs: bbr.getMetrics().rtt,
+            chunkIndex: currentChunkIndex,
+            totalChunks: totalChunksEstimate,
+            bbrState: bbr.getMetrics().state,
+            connectionType: 'direct_host',
+            merkleRoot: null,
+            etaString: formatETA(totalSize - currentOffset, avgSpeed),
+          });
+        }
+      }, 200);
+
+      while (senderProgress.offset < totalSize) {
         const activeChannels = channels.dataChannels && channels.dataChannels.length > 0
           ? channels.dataChannels
           : [channels.dataChannel];
@@ -640,7 +673,7 @@ export function useTransfer({
         // Ultra-Fast Burst: Send up to 128 chunks (32MB) synchronously per event-loop tick
         let burstSent = 0;
         while (preBufferQueue.length > 0 && burstSent < 128) {
-          const targetChannel = openChannels[chunkIndex % openChannels.length];
+          const targetChannel = openChannels[senderProgress.chunkIndex % openChannels.length];
           if (!backpressure.canSend(targetChannel)) break;
 
           const item = preBufferQueue.shift()!;
@@ -650,8 +683,8 @@ export function useTransfer({
             }
             targetChannel.send(item.packet as any);
             backpressure.registerSentChunk(item.chunkIndex);
-            offset += (item.packet.byteLength - 16);
-            chunkIndex++;
+            senderProgress.offset += (item.packet.byteLength - 16);
+            senderProgress.chunkIndex++;
             burstSent++;
           } catch (sendErr) {
             preBufferQueue.unshift(item);
@@ -660,63 +693,31 @@ export function useTransfer({
           }
         }
 
+        if (burstSent === 0) {
+          await new Promise((r) => setTimeout(r, 4));
+        }
+
         // Replenish pre-buffer in background
         if (!isReadingDone && preBufferQueue.length < PRE_BUFFER_SIZE / 2) {
           fillPreBuffer();
         }
 
-        const now = Date.now();
-        const timeDiff = (now - lastSampleTimeRef.current) / 1000;
-        let currentSpeed = telemetry.speedBytesPerSec;
-        if (timeDiff >= 0.2) {
-          const bytesDiff = offset - lastByteCountRef.current;
-          currentSpeed = bytesDiff / timeDiff;
-          lastByteCountRef.current = offset;
-          lastSampleTimeRef.current = now;
-
-          speedHistoryRef.current.push(currentSpeed);
-          if (speedHistoryRef.current.length > 10) speedHistoryRef.current.shift();
-        }
-
-        const avgSpeed = speedHistoryRef.current.length > 0
-          ? speedHistoryRef.current.reduce((a, b) => a + b, 0) / speedHistoryRef.current.length
-          : currentSpeed;
-
-        const progressPercent = Math.min(100, (offset / totalSize) * 100);
-
-        setTelemetry({
-          bytesTransferred: offset,
-          totalBytes: totalSize,
-          progressPercent,
-          speedBytesPerSec: currentSpeed,
-          rttMs: bbr.getMetrics().rtt,
-          chunkIndex,
-          totalChunks: totalChunksEstimate,
-          bbrState: bbr.getMetrics().state,
-          connectionType: 'direct_host',
-          merkleRoot: null,
-          etaString: formatETA(totalSize - offset, avgSpeed),
-        });
-
         // Save session checkpoint to IndexedDB for auto-resume on refresh
-        if (chunkIndex % 50 === 0 && roomId) {
+        if (senderProgress.chunkIndex % 50 === 0 && roomId) {
           saveResumeSession({
             roomId,
             role: 'sender',
             fileName: inputFile.name,
             fileSize: inputFile.size,
             totalChunks: totalChunksEstimate,
-            completedChunksBitmap: [chunkIndex],
-            bytesTransferred: offset,
+            completedChunksBitmap: [senderProgress.chunkIndex],
+            bytesTransferred: senderProgress.offset,
             updatedAt: Date.now(),
           });
         }
-
-        const delay = bbr.getPacingDelayMs(scaler.getChunkSize());
-        if (delay > 0) {
-          await new Promise((r) => setTimeout(r, delay));
-        }
       }
+
+      clearInterval(telemetryInterval);
 
       if (roomId) removeResumeSession(roomId);
       setState('verifying');

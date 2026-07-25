@@ -197,7 +197,9 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
             <GitFork className="w-4 h-4 text-[var(--accent)]" />
             BLAKE3 Merkle Integrity Engine
           </span>
-          <span className="text-[var(--accent)] font-bold">{telemetry.progressPercent}% Complete</span>
+          <span className="text-[var(--accent)] font-bold">
+            {(Math.round(telemetry.progressPercent * 10) / 10).toFixed(1)}% Complete
+          </span>
         </div>
 
         {/* Progress Bar */}

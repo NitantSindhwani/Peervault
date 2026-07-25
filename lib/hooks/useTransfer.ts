@@ -313,8 +313,8 @@ export function useTransfer({
       // Immediate check in case DataChannels opened early
       checkChannelsReady();
 
-      // Dual-Engine Fallback: Stage encrypted chunks only for small files (<10MB) if P2P fails after 15s
-      if (enableStaging && file.size < 10 * 1024 * 1024) {
+      // Dual-Engine Fallback: Stage encrypted chunks if P2P does not start streaming after 10s
+      if (enableStaging) {
         stagingFallbackTimerRef.current = setTimeout(async () => {
           if (!hasStartedStreaming) {
             try {
@@ -748,6 +748,22 @@ export function useTransfer({
                     try {
                       await pc.addIceCandidate(new RTCIceCandidate(cand));
                     } catch {}
+                  }
+                }
+              }
+            }
+          } catch {}
+          // Fallback staging check if WebRTC P2P is delayed or blocked
+          try {
+            const stRes = await fetch(`/api/signal?action=get_staging&roomId=${cleanRoomId}`);
+            if (stRes.ok) {
+              const stData = await stRes.json();
+              if (stData.available && stData.chunks && stData.chunks.length > 0) {
+                for (const item of stData.chunks) {
+                  const hexStr: string = item.dataHex;
+                  const bytes = new Uint8Array(hexStr.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
+                  if (currentPacketHandler) {
+                    currentPacketHandler({ data: bytes.buffer } as MessageEvent);
                   }
                 }
               }

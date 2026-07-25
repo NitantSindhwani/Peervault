@@ -39,11 +39,29 @@ export class KeepAliveManager {
 
         this.oscillator.start();
         if (this.audioContext.state === 'suspended') {
-          await this.audioContext.resume();
+          try {
+            await this.audioContext.resume();
+          } catch {}
         }
       }
     } catch {
       // AudioContext failed or blocked by policy
+    }
+
+    if (typeof document !== 'undefined') {
+      const unlockAudio = () => {
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          try {
+            this.audioContext.resume();
+          } catch {}
+        }
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+        document.removeEventListener('touchstart', unlockAudio);
+      };
+      document.addEventListener('click', unlockAudio, { once: true });
+      document.addEventListener('keydown', unlockAudio, { once: true });
+      document.addEventListener('touchstart', unlockAudio, { once: true });
     }
 
     // 2. Screen WakeLock API & visibilitychange listener

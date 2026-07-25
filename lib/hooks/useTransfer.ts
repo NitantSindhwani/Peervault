@@ -1022,6 +1022,7 @@ export function useTransfer({
     let chunkCount = 0;
     let actualFileSize = fileSize;
     let actualFileName = fileName;
+    const receivedChunkSet = new Set<number>();
 
     lastSampleTimeRef.current = Date.now();
     lastByteCountRef.current = 0;
@@ -1073,9 +1074,15 @@ export function useTransfer({
         const chunkIndex = packetView.getUint32(0, false);
         const payload = rawPacket.slice(16);
 
+        // Deduplicate duplicate packets arriving over multi-channel/relay
+        if (receivedChunkSet.has(chunkIndex)) {
+          return;
+        }
+        receivedChunkSet.add(chunkIndex);
+
         if (diskWriterRef.current) {
           const writeOffset = chunkIndex * payload.byteLength;
-          await diskWriterRef.current.writeChunk(payload, writeOffset);
+          await diskWriterRef.current.writeChunk(payload, writeOffset, chunkIndex);
           receivedBytes += payload.byteLength;
           chunkCount++;
 
@@ -1126,7 +1133,8 @@ export function useTransfer({
             });
           }
 
-          if (receivedBytes >= targetSize && targetSize > 0 && !isFinalizingRef.current) {
+          const isFullyReceived = (receivedBytes >= targetSize) || (totalChunksEst > 0 && chunkCount >= totalChunksEst);
+          if (isFullyReceived && targetSize > 0 && !isFinalizingRef.current) {
             isFinalizingRef.current = true;
             if (roomId) removeResumeSession(roomId);
             setState('verifying');

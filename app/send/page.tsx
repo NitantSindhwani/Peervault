@@ -437,7 +437,15 @@ export default function SendPage() {
                   <span>0-Second Link Generated (Zero Server Upload)</span>
                 </div>
                 <h3 className="text-2xl font-bold text-[var(--text-primary)] font-display">
-                  {state === 'waiting_peer' ? 'Ready to Stream — Send Link Below' : `Status: ${state.toUpperCase()}`}
+                  {state === 'waiting_peer'
+                    ? 'Ready to Stream — Waiting for Recipient'
+                    : state === 'negotiating'
+                    ? 'Connecting to Recipient Device...'
+                    : state === 'connected' || state === 'streaming'
+                    ? `Streaming File to Recipient (${Math.round(telemetry.progressPercent)}%)`
+                    : state === 'complete'
+                    ? 'File Stream Successfully Completed!'
+                    : `Status: ${state.toUpperCase()}`}
                 </h3>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                   Your file remains 100% on your device disk. <strong>Zero bytes are uploaded to any cloud server</strong>. Streaming begins the moment your recipient opens the link.

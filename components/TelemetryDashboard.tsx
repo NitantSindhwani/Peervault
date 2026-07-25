@@ -51,9 +51,10 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
     if (!mock) {
       if (liveData) {
         setTelemetry((prev) => {
-          const speedMb = (liveData as any).speedBytesPerSec !== undefined
-            ? parseFloat(((liveData as any).speedBytesPerSec / (1024 * 1024)).toFixed(1))
-            : (liveData.transferSpeedMb ?? prev.transferSpeedMb);
+          const rawBytesSec = (liveData as any).speedBytesPerSec;
+          const speedMb = typeof rawBytesSec === 'number'
+            ? parseFloat((rawBytesSec / (1024 * 1024)).toFixed(1))
+            : (typeof liveData.transferSpeedMb === 'number' ? liveData.transferSpeedMb : 0);
 
           const chunkIdx = liveData.chunkIndex ?? prev.chunkIndex;
           const totalChks = liveData.totalChunks ?? prev.totalChunks;
@@ -71,8 +72,9 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
           };
         });
 
-        if ((liveData as any).speedBytesPerSec !== undefined) {
-          const speedMb = parseFloat(((liveData as any).speedBytesPerSec / (1024 * 1024)).toFixed(1));
+        const rawBytesSec = (liveData as any).speedBytesPerSec;
+        if (typeof rawBytesSec === 'number') {
+          const speedMb = parseFloat((rawBytesSec / (1024 * 1024)).toFixed(1));
           setSpeedHistory((prev) => [...prev.slice(-20), speedMb]);
         }
       }
@@ -147,7 +149,8 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
           <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-wider">Throughput Rate</span>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-mono font-bold text-[var(--text-primary)] tabular-nums">{telemetry.transferSpeedMb}</span>
-            <span className="text-xs font-mono text-[var(--accent)]">MB/s</span>
+            <span className="text-xs font-mono text-[var(--accent)] font-bold">MB/s</span>
+            <span className="text-[11px] font-mono text-[var(--text-secondary)]">({(telemetry.transferSpeedMb * 8).toFixed(0)} Mbps)</span>
           </div>
           <SpeedGraph data={speedHistory} height={32} />
         </div>

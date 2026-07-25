@@ -7,7 +7,7 @@ import os from 'os';
 // Global Persistent In-Memory Signaling & Staging Caches
 const globalForSignal = globalThis as unknown as {
   signalCache: Map<string, { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }>;
-  stagingCache: Map<string, { chunks: Map<number, string>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }>;
+  stagingCache: Map<string, { chunks: Map<number, any>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }>;
   cleanupInterval?: any;
 };
 
@@ -65,7 +65,7 @@ if (!globalForSignal.cleanupInterval) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { roomId, action, offer, answer, candidate, chunkIndex, chunkDataHex, totalChunks, fileName, fileSize } = body;
+    const { roomId, action, offer, answer, candidate, chunkIndex, chunkDataHex, chunkDataB64, totalChunks, fileName, fileSize } = body;
 
     if (!roomId) {
       return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       let staging = stagingCache.get(roomId);
       if (!staging) {
         staging = {
-          chunks: new Map<number, string>(),
+          chunks: new Map<number, any>(),
           updatedAt: Date.now(),
           totalChunks: totalChunks || 1,
           fileName: fileName || 'file.bin',
@@ -121,11 +121,12 @@ export async function POST(request: NextRequest) {
         stagingCache.set(roomId, staging);
       }
 
-      if (typeof chunkIndex === 'number' && chunkDataHex) {
-        staging.chunks.set(chunkIndex, chunkDataHex);
-        staging.updatedAt = Date.now();
+      const activeStaging = staging;
+      if (typeof chunkIndex === 'number' && (chunkDataB64 || chunkDataHex)) {
+        activeStaging.chunks.set(chunkIndex, { dataB64: chunkDataB64, dataHex: chunkDataHex });
+        activeStaging.updatedAt = Date.now();
       }
-      return NextResponse.json({ success: true, storedChunks: staging.chunks.size });
+      return NextResponse.json({ success: true, storedChunks: activeStaging.chunks.size });
     }
 
     // Self-destruct staging cache on completion
@@ -152,25 +153,17 @@ export async function GET(request: NextRequest) {
   // Get staging ciphertext chunks for offline receiver
   if (action === 'get_staging') {
     const staging = stagingCache.get(roomId);
-    if (!staging) {
+    if (!staging || staging.chunks.size === 0) {
       return NextResponse.json({ available: false });
     }
 
-    const receivedCount = staging.chunks.size;
-    const totalCount = staging.totalChunks;
-
-    if (receivedCount < totalCount) {
-      return NextResponse.json({
-        available: false,
-        partial: true,
-        receivedChunks: receivedCount,
-        totalChunks: totalCount,
-      });
-    }
-
-    const chunksArray: { index: number; dataHex: string }[] = [];
-    for (const [index, dataHex] of staging.chunks.entries()) {
-      chunksArray.push({ index, dataHex });
+    const chunksArray: { index: number; dataHex?: string; dataB64?: string }[] = [];
+    for (const [index, val] of staging.chunks.entries()) {
+      if (typeof val === 'string') {
+        chunksArray.push({ index, dataHex: val });
+      } else {
+        chunksArray.push({ index, dataB64: val.dataB64, dataHex: val.dataHex });
+      }
     }
     chunksArray.sort((a, b) => a.index - b.index);
 
@@ -179,6 +172,7 @@ export async function GET(request: NextRequest) {
       fileName: staging.fileName,
       fileSize: staging.fileSize,
       totalChunks: staging.totalChunks,
+      receivedChunks: staging.chunks.size,
       chunks: chunksArray,
     });
   }

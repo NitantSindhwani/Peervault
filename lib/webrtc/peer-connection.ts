@@ -25,40 +25,11 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.services.mozilla.com:3478' },
+  { urls: 'stun:stun.nextcloud.com:443' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:relay.metered.ca:80' },
-  { urls: 'stun:relay.metered.ca:443' },
-  {
-    urls: 'turn:relay.metered.ca:80',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:relay.metered.ca:443',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:relay.metered.ca:443?transport=tcp',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelay',
-    credential: 'openrelay',
-  },
+  { urls: 'stun:stun.sipgate.net:10000' },
+  { urls: 'stun:stun.voip.blackberry.com:3478' },
 ];
 
 /**
@@ -75,24 +46,20 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   // Channel 0: Control (ordered, reliable)
   const controlChannel = pc.createDataChannel('control', {
     ordered: true,
-    maxRetransmits: 10,
   });
   controlChannel.binaryType = 'arraybuffer';
 
-  // 8 Parallel Striped DataChannels for 8x Throughput Multi-Channel P2P Engine
-  const dataChannels: RTCDataChannel[] = [];
-  for (let i = 0; i < 8; i++) {
-    const ch = pc.createDataChannel(`data_${i}`, {
-      ordered: true,
-    });
-    ch.binaryType = 'arraybuffer';
-    dataChannels.push(ch);
-  }
+  // Primary High-Performance DataChannel
+  const dataChannel = pc.createDataChannel('data_0', {
+    ordered: true,
+  });
+  dataChannel.binaryType = 'arraybuffer';
+
+  const dataChannels: RTCDataChannel[] = [dataChannel];
 
   // Channel 2: Telemetry (ordered, reliable metrics)
   const telemetryChannel = pc.createDataChannel('telemetry', {
     ordered: true,
-    maxRetransmits: 5,
   });
   telemetryChannel.binaryType = 'arraybuffer';
 

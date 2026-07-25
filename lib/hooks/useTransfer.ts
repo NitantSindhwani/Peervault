@@ -103,6 +103,7 @@ export function useTransfer({
   const bcRef = useRef<BroadcastChannel | null>(null);
   const receiverStartedRef = useRef<string | null>(null);
   const senderStartedRef = useRef<boolean>(false);
+  const lastAppliedAnswerRef = useRef<string | null>(null);
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
@@ -332,13 +333,18 @@ export function useTransfer({
           if (res.ok) {
             const data = await res.json();
 
-            if (data.answer && channels.pc.signalingState !== 'stable') {
-              try {
-                const ansObj = typeof data.answer === 'string' ? JSON.parse(data.answer) : data.answer;
-                await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
-                setState('negotiating');
-              } catch (err) {
-                console.warn('[Transfer] setRemoteDescription answer error:', err);
+            if (data.answer) {
+              const ansStr = typeof data.answer === 'string' ? data.answer : JSON.stringify(data.answer);
+              if (lastAppliedAnswerRef.current !== ansStr) {
+                lastAppliedAnswerRef.current = ansStr;
+                try {
+                  const ansObj = typeof data.answer === 'string' ? JSON.parse(data.answer) : data.answer;
+                  await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+                  addLog('SIGNAL', 'Successfully set remote description from recipient SDP Answer');
+                  setState('negotiating');
+                } catch (err: any) {
+                  addLog('ERROR', `setRemoteDescription answer error: ${err.message}`);
+                }
               }
             }
 
@@ -367,61 +373,89 @@ export function useTransfer({
         stagingFallbackTimerRef.current = setTimeout(async () => {
           if (!hasStartedStreaming) {
             try {
-              const chunkSize = 64512;
+              const chunkSize = 256 * 1024;
               let offset = 0;
               let chunkIndex = 0;
               const totalChunks = Math.ceil(fileToStream.size / chunkSize);
 
-            while (offset < fileToStream.size) {
-              const slice = fileToStream.slice(offset, offset + chunkSize);
-              const buffer = await slice.arrayBuffer();
-              
-              const iv = window.crypto.getRandomValues(new Uint8Array(12));
-              const header = new ArrayBuffer(16);
-              const headerView = new DataView(header);
-              headerView.setUint32(0, chunkIndex, false);
-              new Uint8Array(header).set(iv, 4);
+              addLog('INFO', `Starting Staging Fallback Upload (${totalChunks} chunks of 256KB)`);
 
-              const packet = new Uint8Array(header.byteLength + buffer.byteLength);
-              packet.set(new Uint8Array(header), 0);
-              packet.set(new Uint8Array(buffer), 16);
+              while (offset < fileToStream.size) {
+                const batchPromises: Promise<any>[] = [];
+                const batchSize = 10; // 10 chunks per batch
 
-              const hexStr = Array.from(new Uint8Array(packet.buffer))
-                .map((b) => b.toString(16).padStart(2, '0'))
-                .join('');
+                for (let b = 0; b < batchSize && offset < fileToStream.size; b++) {
+                  const currentIdx = chunkIndex;
+                  const slice = fileToStream.slice(offset, offset + chunkSize);
+                  offset += slice.size;
+                  chunkIndex++;
 
-              await fetch('/api/signal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  roomId: generatedRoomId,
-                  action: 'submit_staging',
-                  chunkIndex,
-                  chunkDataHex: hexStr,
-                  totalChunks,
-                  fileName: fileToStream.name,
-                  fileSize: fileToStream.size,
-                }),
-              }).catch(() => {});
+                  const p = (async () => {
+                    const buffer = await slice.arrayBuffer();
+                    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                    const header = new ArrayBuffer(16);
+                    const headerView = new DataView(header);
+                    headerView.setUint32(0, currentIdx, false);
+                    new Uint8Array(header).set(iv, 4);
 
-              offset += slice.size;
-              chunkIndex++;
+                    const packet = new Uint8Array(header.byteLength + buffer.byteLength);
+                    packet.set(new Uint8Array(header), 0);
+                    packet.set(new Uint8Array(buffer), 16);
 
-              const progressPercent = Math.min(100, (offset / fileToStream.size) * 100);
-              setTelemetry((prev) => ({
-                ...prev,
-                bytesTransferred: offset,
-                totalBytes: fileToStream.size,
-                progressPercent,
-                speedBytesPerSec: 50 * 1024 * 1024,
-              }));
+                    let binary = '';
+                    const bytes = packet;
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i += 8192) {
+                      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)) as any);
+                    }
+                    const b64Str = btoa(binary);
+
+                    return fetch('/api/signal', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        roomId: generatedRoomId,
+                        action: 'submit_staging',
+                        chunkIndex: currentIdx,
+                        chunkDataB64: b64Str,
+                        totalChunks,
+                        fileName: fileToStream.name,
+                        fileSize: fileToStream.size,
+                      }),
+                    }).catch(() => {});
+                  })();
+
+                  batchPromises.push(p);
+                }
+
+                await Promise.all(batchPromises);
+
+                const progressPercent = Math.min(100, (offset / fileToStream.size) * 100);
+                const now = Date.now();
+                const timeDiff = Math.max(0.1, (now - lastSampleTimeRef.current) / 1000);
+                const bytesDiff = offset - lastByteCountRef.current;
+                const calcSpeed = bytesDiff / timeDiff;
+                lastByteCountRef.current = offset;
+                lastSampleTimeRef.current = now;
+
+                setTelemetry((prev) => ({
+                  ...prev,
+                  bytesTransferred: offset,
+                  totalBytes: fileToStream.size,
+                  progressPercent,
+                  speedBytesPerSec: calcSpeed,
+                }));
+
+                addLog('DATA', `Staged batch upload progress: ${progressPercent.toFixed(1)}% (${(calcSpeed / (1024 * 1024)).toFixed(1)} MB/s)`);
+              }
+
+              setState('streaming');
+              setState('complete');
+            } catch (err: any) {
+              addLog('ERROR', `Staging uploader failure: ${err.message}`);
             }
-
-            setState('streaming');
-            setState('complete');
-          } catch {}
-        }
-      }, 1500);
+          }
+        }, 1500);
       }
 
       channels.controlChannel.onmessage = (event) => {
@@ -625,16 +659,29 @@ export function useTransfer({
       setState('generating_key');
 
       const cleanRoomId = targetRoomId.split('#')[0];
+      addLog('INFO', `Receiver initializing for room: ${cleanRoomId}`);
       let offerPayload = await parseInstantOfferHash(window.location.hash);
 
-      // Retry up to 300 times (30 seconds) to fetch the offer from signaling cache
+      const initialFileName = offerPayload?.fileName || 'SharedFile';
+      const initialFileSize = offerPayload?.fileSize || 0;
+
+      // Setup DiskWriter IMMEDIATELY so incoming packets are never dropped
+      const writer = new DiskWriter(initialFileName, initialFileSize);
+      await writer.init();
+      diskWriterRef.current = writer;
+      keepAliveRef.current?.start();
+      setState('negotiating');
+
+      // Retry up to 300 times (30 seconds) to fetch the offer from signaling cache if not in URL hash
       if (!offerPayload || !offerPayload.sdp) {
+        addLog('SIGNAL', 'SDP Offer not found in URL hash. Polling signaling server...');
         for (let attempt = 0; attempt < 300; attempt++) {
           try {
             const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
             const data = await res.json();
             if (data.offer && data.offer.sdp) {
               offerPayload = data.offer;
+              addLog('SIGNAL', 'Successfully retrieved SDP Offer from signaling server');
               break;
             }
           } catch {}
@@ -642,8 +689,12 @@ export function useTransfer({
         }
       }
 
-      const fileName = offerPayload?.fileName || 'SharedFile';
-      const fileSize = offerPayload?.fileSize || 0;
+      const fileName = offerPayload?.fileName || initialFileName;
+      const fileSize = offerPayload?.fileSize || initialFileSize;
+
+      if (fileName !== initialFileName || fileSize !== initialFileSize) {
+        writer.setFileName(fileName);
+      }
 
       if (fileSize > 0) {
         const estChunks = Math.ceil(fileSize / 262144);
@@ -672,13 +723,6 @@ export function useTransfer({
       const pubKeyHex = Array.from(new Uint8Array(rawPubKey))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
-
-      // 5. Setup DiskWriter & Transition State
-      const writer = new DiskWriter(fileName, fileSize);
-      await writer.init();
-      diskWriterRef.current = writer;
-      keepAliveRef.current?.start();
-      setState('negotiating');
 
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
@@ -783,6 +827,8 @@ export function useTransfer({
 
         const processedSenderCandidates = new Set<string>();
 
+        const processedStagingChunks = new Set<number>();
+
         // Listen for Sender ICE Candidates over dual signaling relays
         signalPollerRef.current = setInterval(async () => {
           try {
@@ -809,8 +855,27 @@ export function useTransfer({
               const stData = await stRes.json();
               if (stData.available && stData.chunks && stData.chunks.length > 0) {
                 for (const item of stData.chunks) {
-                  const hexStr: string = item.dataHex;
-                  const bytes = new Uint8Array(hexStr.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
+                  if (processedStagingChunks.has(item.index)) continue;
+                  processedStagingChunks.add(item.index);
+
+                  let bytes: Uint8Array;
+                  if (item.dataB64) {
+                    const binary = atob(item.dataB64);
+                    bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                      bytes[i] = binary.charCodeAt(i);
+                    }
+                  } else if (item.dataHex) {
+                    const hexStr: string = item.dataHex;
+                    const len = hexStr.length / 2;
+                    bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                      bytes[i] = parseInt(hexStr.substring(i * 2, i * 2 + 2), 16);
+                    }
+                  } else {
+                    continue;
+                  }
+
                   if (currentPacketHandler) {
                     currentPacketHandler({ data: bytes.buffer } as MessageEvent);
                   }
@@ -818,7 +883,7 @@ export function useTransfer({
               }
             }
           } catch {}
-        }, 1200);
+        }, 250);
       }
     } catch (err: any) {
       console.error('[Transfer] Receiver error:', err);

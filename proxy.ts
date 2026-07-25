@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/api/')) {
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
     const now = Date.now();
@@ -34,6 +34,8 @@ export function middleware(request: NextRequest) {
 
   return NextResponse.next();
 }
+
+export const middleware = proxy;
 
 export const config = {
   matcher: '/api/:path*',

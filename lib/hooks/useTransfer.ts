@@ -1223,8 +1223,7 @@ export function useTransfer({
           }
 
           const isFullyReceived = progress.totalBytes > 0
-            && progress.bytesTransferred === progress.totalBytes
-            && progress.receivedChunks === progress.totalChunks;
+            && (progress.bytesTransferred >= progress.totalBytes || (progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks));
           if (isFullyReceived && !isFinalizingRef.current) {
             isFinalizingRef.current = true;
             if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);

@@ -208,8 +208,15 @@ export class DiskWriter {
     if (this.writableStream) {
       try {
         await this.writableStream.close();
-        const dummyBlob = new Blob([], { type: this.mimeType });
-        return { downloadUrl: '', blob: dummyBlob, tier: 'direct_fs' };
+        let downloadUrl = '';
+        let fileBlob: Blob = new Blob([], { type: this.mimeType });
+        if (this.fileHandle && typeof this.fileHandle.getFile === 'function') {
+          try {
+            fileBlob = await this.fileHandle.getFile();
+            downloadUrl = URL.createObjectURL(fileBlob);
+          } catch {}
+        }
+        return { downloadUrl, blob: fileBlob, tier: 'direct_fs' };
       } catch (err) {
         throw new Error(`Direct file close failed: ${err instanceof Error ? err.message : 'unknown error'}`);
       }

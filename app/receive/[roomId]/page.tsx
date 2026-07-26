@@ -347,12 +347,14 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             </div>
 
             {/* DIRECT 1-CLICK IN-APP DOWNLOAD BUTTON */}
-            {receivedSavedToDisk ? (
-              <div className="w-full py-4 rounded-xl bg-[var(--success)]/10 text-[var(--success)] font-mono text-sm font-bold border border-[var(--success)]/40 flex items-center justify-center gap-2 shadow-xl">
+            {receivedSavedToDisk && (
+              <div className="w-full py-3.5 rounded-xl bg-[var(--success)]/10 text-[var(--success)] font-mono text-xs sm:text-sm font-bold border border-[var(--success)]/40 flex items-center justify-center gap-2 shadow-xl">
                 <CheckCircle className="w-5 h-5" weight="fill" />
-                <span>Saved Directly to Disk ({fileSizeMb} MB)</span>
+                <span>Saved Directly to Disk Path Selected ({fileSizeMb} MB)</span>
               </div>
-            ) : receivedBlobUrl && (
+            )}
+            
+            {receivedBlobUrl && (
               <a
                 href={receivedBlobUrl}
                 download={fileName}

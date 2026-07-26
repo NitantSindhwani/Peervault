@@ -472,8 +472,8 @@ export default function SendPage() {
                     name="shareLinkUrl"
                     type="text"
                     readOnly
-                    value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
-                    className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)]"
+                    value={roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : ''}
+                    className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)] cursor-pointer tracking-wide"
                   />
                   <div className="flex items-center gap-2">
                     <button

@@ -176,9 +176,9 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   };
 
   // Priority: Real Received File Name > URL Offer File Name > Fallback
-  let rawName = receivedFileName || offerPayload?.fileName || 'SharedFile.jpg';
-  if (!/\.[a-z0-9]{2,5}$/i.test(rawName)) {
-    rawName += '.jpg';
+  let rawName = receivedFileName || offerPayload?.fileName || 'Incoming Transfer File';
+  if (rawName === 'Incoming Transfer File' && offerPayload?.fileName) {
+    rawName = offerPayload.fileName;
   }
   const fileName = rawName;
   const fileSizeMb = (fileSizeBytes / (1024 * 1024)).toFixed(1);

@@ -10,11 +10,8 @@ export interface QRCodeViewerProps {
 }
 
 export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
-  // Use short room URL for QR code so density is Version 3 (large dots, scans in < 0.01s)
-  const shortQrUrl = url.includes('#offer=') ? url.split('#offer=')[0] : url;
-  
   // Format URL so scanning from mobile phone on LAN doesn't hit phone's own localhost
-  let scannableUrl = shortQrUrl;
+  let scannableUrl = url;
   if (typeof window !== 'undefined' && scannableUrl.includes('localhost') && window.location.hostname !== 'localhost') {
     scannableUrl = scannableUrl.replace('localhost', window.location.hostname);
   }

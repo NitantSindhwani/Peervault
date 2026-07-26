@@ -31,6 +31,17 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:global.stun.twilio.com:3478' },
   { urls: 'stun:stun.sipgate.net:10000' },
   { urls: 'stun:stun.voip.blackberry.com:3478' },
+  // OpenRelay Free TURN (UDP, TCP, and TLS Port 443 for 100% NAT & Firewall Traversal)
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+      'turns:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelay',
+    credential: 'openrelay',
+  },
 ];
 
 /**

@@ -524,10 +524,20 @@ export function useTransfer({
         } catch {}
       };
 
+      let lastOfferPushTime = Date.now();
       const processedReceiverCandidates = new Set<string>();
 
       // 4. Listen for Recipient's SDP Answer over dual signaling relays (Local API + Global PubSub)
       signalPollerRef.current = setInterval(async () => {
+        // Continuously refresh offer registration on signaling cache every 1.5s while waiting for recipient
+        if (!channels.pc.remoteDescription && Date.now() - lastOfferPushTime > 1500) {
+          lastOfferPushTime = Date.now();
+          sendSignalMessage(generatedRoomId, {
+            action: 'submit_offer',
+            offer: offerPayload,
+          });
+        }
+
         try {
           const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
           if (res.ok) {

@@ -27,6 +27,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attestation, setAttestation] = useState<WebAuthnAttestationResult | null>(null);
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
+  const [isLoadingOffer, setIsLoadingOffer] = useState(true);
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, receivedSavedToDisk, startReceiver } = useTransfer({
@@ -62,11 +63,13 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           if (payload) break;
 
           if (!mounted) return;
-          await new Promise((r) => setTimeout(r, 800));
+          await new Promise((r) => setTimeout(r, 400));
         }
       }
 
       if (!mounted) return;
+      setIsLoadingOffer(false);
+
       if (payload) {
         setOfferPayload(payload);
         if (!payload.passphraseRequired) {
@@ -209,6 +212,21 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             <h3 className="text-xl font-bold text-[var(--text-primary)] font-display">Room Expired or Unavailable</h3>
             <p className="text-xs text-red-400 leading-relaxed">
               {errorMsg || 'This transfer room has reached its maximum download limit or TTL expiration.'}
+            </p>
+          </div>
+        </div>
+      ) : isLoadingOffer && !offerPayload ? (
+        /* Loading Transfer Metadata Card */
+        <div className="max-w-md mx-auto bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-8 space-y-4 text-center shadow-2xl font-mono">
+          <div className="w-12 h-12 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center mx-auto border border-[var(--accent)]/30">
+            <ShieldCheck className="w-6 h-6 text-[var(--accent)] animate-pulse" />
+          </div>
+          <div className="space-y-1 font-mono">
+            <h3 className="text-base font-bold text-[var(--text-primary)] font-display">
+              Connecting to Transfer Room...
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Reading file metadata and establishing WebRTC signal...
             </p>
           </div>
         </div>

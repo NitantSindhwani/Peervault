@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 const MAX_SIGNAL_BODY_BYTES = 128 * 1024;

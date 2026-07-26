@@ -519,7 +519,7 @@ export function useTransfer({
         } catch {}
 
         checkChannelsReady();
-      }, 1200);
+      }, 250);
 
       // Immediate check in case DataChannels opened early
       checkChannelsReady();

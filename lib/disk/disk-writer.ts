@@ -110,7 +110,11 @@ export class DiskWriter {
         this.useDBPaging = false;
         return true;
       } catch (err) {
-        throw new Error(`Could not open direct file writer: ${err instanceof Error ? err.message : 'unknown error'}`);
+        console.warn('[DiskWriter] Direct file handle createWritable failed, falling back to IndexedDB paging:', err);
+        this.fileHandle = null;
+        this.writableStream = null;
+        this.useDBPaging = true;
+        this.tier = 'indexeddb_paging';
       }
     }
 

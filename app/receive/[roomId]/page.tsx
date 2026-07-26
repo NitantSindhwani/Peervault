@@ -90,20 +90,27 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
 
   const requestDirectSaveHandle = async () => {
     if (!requiresDirectSave) return undefined;
-    const picker = (window as any).showSaveFilePicker;
-    if (typeof picker !== 'function') {
-      throw new Error('This browser cannot stream very large files directly to disk. Use Chrome or Edge for large transfers.');
-    }
+    // On mobile devices (Android/iOS), showSaveFilePicker.createWritable is restricted by OS platform rules.
+    const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) return undefined;
 
-    return picker({
-      suggestedName: fileName,
-      types: [
-        {
-          description: 'PeerVault transfer',
-          accept: { 'application/octet-stream': ['.' + (fileName.split('.').pop() || 'bin')] },
-        },
-      ],
-    });
+    const picker = typeof window !== 'undefined' ? (window as any).showSaveFilePicker : undefined;
+    if (typeof picker !== 'function') return undefined;
+
+    try {
+      return await picker({
+        suggestedName: fileName,
+        types: [
+          {
+            description: 'PeerVault transfer',
+            accept: { 'application/octet-stream': ['.' + (fileName.split('.').pop() || 'bin')] },
+          },
+        ],
+      });
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw err;
+      return undefined;
+    }
   };
 
   const beginReceive = async () => {

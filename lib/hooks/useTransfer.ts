@@ -1201,7 +1201,7 @@ export function useTransfer({
           progress.receivedChunks = receivedChunkSet.size;
 
           try {
-            if (controlChannel && controlChannel.readyState === 'open') {
+            if (progress.receivedChunks % 100 === 0 && controlChannel && controlChannel.readyState === 'open') {
               controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
             }
           } catch {}

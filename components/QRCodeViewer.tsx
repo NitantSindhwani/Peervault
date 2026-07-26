@@ -9,13 +9,16 @@ export interface QRCodeViewerProps {
 }
 
 export function QRCodeViewer({ url, size = 160 }: QRCodeViewerProps) {
+  // Use short room URL for QR code so density is low and any phone camera scans in < 0.1s
+  const cleanQrUrl = url.includes('#offer=') ? url.split('#offer=')[0] : url;
+
   return (
     <div className="flex flex-col items-center space-y-3 font-mono">
       <div className="p-4 bg-white rounded-2xl border-4 border-[var(--accent)] shadow-[0_0_30px_rgba(234,140,40,0.25)] flex items-center justify-center transition-all hover:scale-105">
         <QRCodeSVG
-          value={url}
+          value={cleanQrUrl}
           size={size}
-          level="L"
+          level="M"
           includeMargin={true}
           bgColor="#FFFFFF"
           fgColor="#0D0F14"

@@ -17,9 +17,10 @@ export interface MediaPlayerProps {
   fileName: string;
   fileSize?: number;
   type?: 'video' | 'audio';
+  isLivePreview?: boolean;
 }
 
-export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPlayerProps) {
+export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePreview = false }: MediaPlayerProps) {
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -41,16 +42,21 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
     const onTimeUpdate = () => setCurrentTime(media.currentTime);
     const onLoadedMetadata = () => setDuration(media.duration);
     const onEnded = () => setIsPlaying(false);
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
 
     media.addEventListener('timeupdate', onTimeUpdate);
     media.addEventListener('loadedmetadata', onLoadedMetadata);
     media.addEventListener('ended', onEnded);
+    document.addEventListener('fullscreenchange', onFsChange);
 
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       media.removeEventListener('timeupdate', onTimeUpdate);
       media.removeEventListener('loadedmetadata', onLoadedMetadata);
       media.removeEventListener('ended', onEnded);
+      document.removeEventListener('fullscreenchange', onFsChange);
     };
   }, [src]);
 
@@ -118,10 +124,10 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen();
+      containerRef.current.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
     }
   };
@@ -145,17 +151,25 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video' }: MediaPl
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      className="relative w-full rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] overflow-hidden shadow-2xl group font-mono"
+      className={`relative w-full rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] overflow-hidden shadow-2xl group font-mono transition-all ${
+        isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen max-h-none rounded-none border-none flex flex-col justify-between bg-black' : ''
+      }`}
     >
       {/* Media Element */}
-      <div className="relative bg-black flex items-center justify-center min-h-[260px] max-h-[500px]">
+      <div className={`relative bg-black flex items-center justify-center ${isFullscreen ? 'flex-1 h-full w-full max-h-none overflow-hidden' : 'min-h-[260px] max-h-[500px]'}`}>
+        {isLivePreview && (
+          <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-black/80 border border-[var(--accent)]/50 text-[10px] text-[var(--accent)] font-bold shadow-lg backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-ping" />
+            <span>LIVE P2P STREAM PREVIEW</span>
+          </div>
+        )}
         {type === 'video' ? (
           <video
             // @ts-ignore
             ref={mediaRef}
             src={src}
             onClick={togglePlay}
-            className="w-full h-full max-h-[500px] object-contain cursor-pointer"
+            className={`w-full object-contain cursor-pointer ${isFullscreen ? 'h-full max-h-none' : 'h-full max-h-[500px]'}`}
           />
         ) : (
           <div className="p-12 text-center space-y-4">

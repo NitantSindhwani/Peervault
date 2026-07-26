@@ -42,11 +42,6 @@ export class BackpressureController {
    * Check whether sender is allowed to transmit next chunk
    */
   public canSend(dataChannel: RTCDataChannel): boolean {
-    if (this.unacknowledged.size >= this.windowSize) {
-      if (!this.isPaused) this.setPaused(true);
-      return false;
-    }
-
     if (dataChannel.bufferedAmount >= this.maxBufferedAmount) {
       if (!this.isPaused) this.setPaused(true);
       return false;

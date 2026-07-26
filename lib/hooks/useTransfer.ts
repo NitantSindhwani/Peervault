@@ -488,12 +488,23 @@ export function useTransfer({
         if (hasStartedStreaming) return;
         const active = channels.dataChannels || [channels.dataChannel];
         const isControlOpen = channels.controlChannel.readyState === 'open';
+        const hasAnyOpenData = active.some((ch) => ch.readyState === 'open');
         const hasAnyReceiverReadyData = active.some((ch) => ch.readyState === 'open' && senderReadyDataLabelsRef.current.has(ch.label));
         
-        // The receiver sends this only after its onmessage listeners are in place.
-        // Starting earlier loses the first packets on some browser/device pairs.
+        // Ideal path: receiver confirmed onmessage listeners & data channel labels
         if (receiverReady && isControlOpen && hasAnyReceiverReadyData) {
           triggerStartStream();
+          return;
+        }
+
+        // Failsafe path: if receiver sent receiver_ready and at least one data channel is open
+        if (receiverReady && isControlOpen && hasAnyOpenData) {
+          setTimeout(() => {
+            if (!hasStartedStreaming) {
+              addLog('CHANNEL', 'Receiver ready failsafe triggered. Initiating stream transmission...');
+              triggerStartStream();
+            }
+          }, 800);
         }
       };
 
@@ -986,6 +997,11 @@ export function useTransfer({
               if (channels.dataChannels) {
                 for (const ch of channels.dataChannels) {
                   attachChannelListener(ch);
+                  try {
+                    if (activeControl.readyState === 'open' && ch.label.startsWith('data')) {
+                      activeControl.send(JSON.stringify({ type: 'data_channel_ready', label: ch.label }));
+                    }
+                  } catch {}
                 }
               }
             }

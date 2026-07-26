@@ -55,6 +55,19 @@ export interface LiveTelemetryState {
   connectionType: string;
   merkleRoot: string | null;
   etaString: string;
+  chunkSizeBytes: number;
+}
+
+const DATA_CHUNK_SIZE = 128 * 1024;
+const DATA_CHANNEL_COUNT = 8;
+const TELEMETRY_SAMPLE_MS = 200;
+
+interface ReceiverProgress {
+  bytesTransferred: number;
+  receivedChunks: number;
+  totalBytes: number;
+  totalChunks: number;
+  chunkSize: number;
 }
 
 export function useTransfer({
@@ -73,6 +86,7 @@ export function useTransfer({
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [receivedBlobUrl, setReceivedBlobUrl] = useState<string | null>(null);
   const [receivedFileName, setReceivedFileName] = useState<string | null>(null);
+  const [receivedSavedToDisk, setReceivedSavedToDisk] = useState(false);
 
   const [telemetry, setTelemetry] = useState<LiveTelemetryState>({
     bytesTransferred: 0,
@@ -86,6 +100,7 @@ export function useTransfer({
     connectionType: 'direct_host',
     merkleRoot: null,
     etaString: '--:--',
+    chunkSizeBytes: DATA_CHUNK_SIZE,
   });
 
   const peerChannelsRef = useRef<PeerChannels | null>(null);
@@ -102,10 +117,18 @@ export function useTransfer({
   const diskWriterRef = useRef<DiskWriter | null>(null);
   const signalPollerRef = useRef<any>(null);
   const stagingFallbackTimerRef = useRef<any>(null);
-  const bcRef = useRef<BroadcastChannel | null>(null);
   const receiverStartedRef = useRef<string | null>(null);
   const senderStartedRef = useRef<boolean>(false);
   const lastAppliedAnswerRef = useRef<string | null>(null);
+  const senderReadyDataLabelsRef = useRef<Set<string>>(new Set());
+  const receiverStreamingRef = useRef(false);
+  const receiverProgressRef = useRef<ReceiverProgress>({
+    bytesTransferred: 0,
+    receivedChunks: 0,
+    totalBytes: 0,
+    totalChunks: 0,
+    chunkSize: DATA_CHUNK_SIZE,
+  });
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
@@ -174,7 +197,6 @@ export function useTransfer({
       bbrRef.current?.stopPingLoop();
       if (signalPollerRef.current) clearInterval(signalPollerRef.current);
       if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
-      if (bcRef.current) bcRef.current.close();
       peerChannelsRef.current?.pc.close();
     };
   }, []);
@@ -183,6 +205,19 @@ export function useTransfer({
     senderStartedRef.current = false;
     receiverStartedRef.current = null;
     lastAppliedAnswerRef.current = null;
+    isFinalizingRef.current = false;
+    setReceivedSavedToDisk(false);
+    setReceivedBlobUrl(null);
+    setReceivedFileName(null);
+    receiverStreamingRef.current = false;
+    receiverProgressRef.current = {
+      bytesTransferred: 0,
+      receivedChunks: 0,
+      totalBytes: 0,
+      totalChunks: 0,
+      chunkSize: DATA_CHUNK_SIZE,
+    };
+    speedHistoryRef.current = [];
 
     if (telemetryIntervalRef.current) {
       clearInterval(telemetryIntervalRef.current);
@@ -215,6 +250,7 @@ export function useTransfer({
       connectionType: 'direct_host',
       merkleRoot: null,
       etaString: '--',
+      chunkSizeBytes: DATA_CHUNK_SIZE,
     });
   }, []);
 
@@ -243,6 +279,8 @@ export function useTransfer({
       telemetryIntervalRef.current = null;
     }
     lastAppliedAnswerRef.current = null;
+    isFinalizingRef.current = false;
+    speedHistoryRef.current = [];
 
     senderStartedRef.current = true;
 
@@ -263,10 +301,12 @@ export function useTransfer({
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
       addLog('INFO', `Generated room ID: ${generatedRoomId}`);
 
-      const channels = createSenderPeerConnection();
+      const channels = createSenderPeerConnection({ channelCount: DATA_CHANNEL_COUNT });
       peerChannelsRef.current = channels;
+      senderReadyDataLabelsRef.current = new Set();
 
       let hasStartedStreaming = false;
+      let receiverReady = false;
       const triggerStartStream = () => {
         if (hasStartedStreaming) return;
         hasStartedStreaming = true;
@@ -320,7 +360,7 @@ export function useTransfer({
       channels.pc.onconnectionstatechange = () => {
         addLog('CHANNEL', `Sender connection state: ${channels.pc.connectionState}`);
         if (channels.pc.connectionState === 'connected') {
-          triggerStartStream();
+          checkChannelsReady();
         } else if (channels.pc.connectionState === 'failed') {
           addLog('ERROR', 'Sender WebRTC connection failed. Triggering ICE restart...');
           try {
@@ -404,9 +444,11 @@ export function useTransfer({
         if (hasStartedStreaming) return;
         const active = channels.dataChannels || [channels.dataChannel];
         const isControlOpen = channels.controlChannel.readyState === 'open';
-        const hasAnyDataOpen = active.some((ch) => ch.readyState === 'open') || channels.dataChannel.readyState === 'open';
+        const hasAnyReceiverReadyData = active.some((ch) => ch.readyState === 'open' && senderReadyDataLabelsRef.current.has(ch.label));
         
-        if (isControlOpen || hasAnyDataOpen) {
+        // The receiver sends this only after its onmessage listeners are in place.
+        // Starting earlier loses the first packets on some browser/device pairs.
+        if (receiverReady && isControlOpen && hasAnyReceiverReadyData) {
           triggerStartStream();
         }
       };
@@ -419,15 +461,24 @@ export function useTransfer({
         }
       }
 
-      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-        const bc = new BroadcastChannel(`pv_bc_${generatedRoomId}`);
-        bcRef.current = bc;
-        bc.onmessage = (e) => {
-          if (e.data?.type === 'receiver_ready') {
-            triggerStartStream();
+      channels.controlChannel.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'receiver_ready') {
+            receiverReady = true;
+            addLog('CHANNEL', 'Receiver packet handlers are ready.');
+            checkChannelsReady();
+          } else if (data.type === 'data_channel_ready' && typeof data.label === 'string') {
+            senderReadyDataLabelsRef.current.add(data.label);
+            addLog('CHANNEL', `Receiver data lane ready: ${data.label}`);
+            checkChannelsReady();
+          } else if (data.type === 'ack') {
+            backpressureRef.current?.handleAck(data.chunkIndex);
+          } else if (data.type === 'bbr_pong') {
+            bbrRef.current?.handlePong(data.ts || performance.now());
           }
-        };
-      }
+        } catch {}
+      };
 
       const processedReceiverCandidates = new Set<string>();
 
@@ -474,17 +525,6 @@ export function useTransfer({
       checkChannelsReady();
 
       // WebRTC P2P & Multi-Relay Signaling Active
-
-      channels.controlChannel.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'ack') {
-            backpressureRef.current?.handleAck(data.chunkIndex);
-          } else if (data.type === 'bbr_pong') {
-            bbrRef.current?.handlePong(data.ts || performance.now());
-          }
-        } catch {}
-      };
     } catch (err: any) {
       console.error('[Transfer] Sender error:', err);
       setErrorMsg(err.message || 'Failed to start sender node');
@@ -502,23 +542,6 @@ export function useTransfer({
     const channels = peerChannelsRef.current;
     if (!channels) return;
 
-    // Transmit original file metadata over control channel
-    const sendMetadata = () => {
-      if (channels.controlChannel && channels.controlChannel.readyState === 'open') {
-        try {
-          channels.controlChannel.send(
-            JSON.stringify({
-              type: 'metadata',
-              fileName: inputFile.name,
-              fileSize: inputFile.size,
-              mimeType: inputFile.type,
-            })
-          );
-        } catch {}
-      }
-    };
-    sendMetadata();
-
     keepAliveRef.current?.start();
     const bbr = new BBRPacer();
     bbrRef.current = bbr;
@@ -526,7 +549,9 @@ export function useTransfer({
 
     const backpressure = new BackpressureController();
     backpressureRef.current = backpressure;
-    backpressure.bindDataChannel(channels.dataChannel);
+    for (const channel of channels.dataChannels || [channels.dataChannel]) {
+      backpressure.bindDataChannel(channel);
+    }
 
     const scaler = new AdaptiveChunkScaler();
     scalerRef.current = scaler;
@@ -536,10 +561,25 @@ export function useTransfer({
 
     const totalSize = inputFile.size;
     const senderProgress = { offset: 0, chunkIndex: 0 };
-    const totalChunksEstimate = Math.ceil(totalSize / scaler.getChunkSize());
+    const chunkSize = scaler.getChunkSize();
+    const totalChunksEstimate = Math.ceil(totalSize / chunkSize);
+
+    // Transmit fixed protocol parameters before the first data packet.
+    try {
+      if (channels.controlChannel.readyState === 'open') {
+        channels.controlChannel.send(JSON.stringify({
+          type: 'metadata',
+          fileName: inputFile.name,
+          fileSize: totalSize,
+          mimeType: inputFile.type,
+          chunkSize,
+        }));
+      }
+    } catch {}
 
     lastByteCountRef.current = 0;
     lastSampleTimeRef.current = Date.now();
+    speedHistoryRef.current = [];
 
     setTelemetry((prev) => ({
       ...prev,
@@ -550,39 +590,47 @@ export function useTransfer({
     try {
       addLog('INFO', `Starting High-Speed WebRTC P2P Stream (${totalChunksEstimate} chunks)`);
       
-      const PRE_BUFFER_SIZE = 256; // Pre-buffer 256 chunks (64MB) in RAM
-      const preBufferQueue: Array<{ chunkIndex: number; packet: Uint8Array }> = [];
+      // A single small reader avoids the old race where many 64 MB fills ran at
+      // once, overwhelming the JS heap and queuing data out of order.
+      const PRE_BUFFER_SIZE = 32;
+      const BURST_SIZE = 16;
+      const preBufferQueue: Array<{ chunkIndex: number; payloadBytes: number; packet: Uint8Array }> = [];
       let bufferOffset = 0;
       let bufferChunkIndex = 0;
       let isReadingDone = false;
+      let fillPromise: Promise<void> | null = null;
 
-      // Parallel Disk Pre-Reader Loop (runs ahead in background)
-      const fillPreBuffer = async () => {
-        while (bufferOffset < totalSize && preBufferQueue.length < PRE_BUFFER_SIZE) {
-          const cIdx = bufferChunkIndex;
-          const chunkSize = scaler.getChunkSize();
-          const slice = inputFile.slice(bufferOffset, bufferOffset + chunkSize);
-          bufferOffset += slice.size;
-          bufferChunkIndex++;
+      const fillPreBuffer = (): Promise<void> => {
+        if (fillPromise) return fillPromise;
 
-          const buffer = await slice.arrayBuffer();
+        fillPromise = (async () => {
+          while (bufferOffset < totalSize && preBufferQueue.length < PRE_BUFFER_SIZE) {
+            const cIdx = bufferChunkIndex++;
+            const slice = inputFile.slice(bufferOffset, bufferOffset + chunkSize);
+            bufferOffset += slice.size;
+            const buffer = await slice.arrayBuffer();
 
-          const iv = window.crypto.getRandomValues(new Uint8Array(12));
-          const header = new ArrayBuffer(16);
-          const headerView = new DataView(header);
-          headerView.setUint32(0, cIdx, false);
-          new Uint8Array(header).set(iv, 4);
+            // Header: index + fixed chunk size + 8 reserved bytes. The receiver
+            // needs the nominal size to position the final short chunk correctly.
+            const header = new ArrayBuffer(16);
+            const headerView = new DataView(header);
+            headerView.setUint32(0, cIdx, false);
+            headerView.setUint32(4, chunkSize, false);
 
-          const packet = new Uint8Array(header.byteLength + buffer.byteLength);
-          packet.set(new Uint8Array(header), 0);
-          packet.set(new Uint8Array(buffer), 16);
+            const packet = new Uint8Array(header.byteLength + buffer.byteLength);
+            packet.set(new Uint8Array(header), 0);
+            packet.set(new Uint8Array(buffer), 16);
+            preBufferQueue.push({ chunkIndex: cIdx, payloadBytes: buffer.byteLength, packet });
+          }
+          if (bufferOffset >= totalSize) isReadingDone = true;
+        })().finally(() => {
+          fillPromise = null;
+        });
 
-          preBufferQueue.push({ chunkIndex: cIdx, packet });
-        }
-        if (bufferOffset >= totalSize) isReadingDone = true;
+        return fillPromise;
       };
 
-      // Fill initial 64MB buffer (< 10ms)
+      // Start after a small read; remaining reads stay serialized in the background.
       await fillPreBuffer();
 
       // Steady 200ms Telemetry Timer (reads mutable senderProgress object to avoid closure stale values)
@@ -596,10 +644,6 @@ export function useTransfer({
           const currentSpeed = bytesDiff / timeDiff;
           lastByteCountRef.current = currentOffset;
           lastSampleTimeRef.current = now;
-
-          const activeChs = channels.dataChannels || [channels.dataChannel];
-          const bufferedAmounts = activeChs.map((ch) => `${ch.label}:${ch.bufferedAmount}`).join(', ');
-          console.log(`[TelemetryLog] currentOffset=${currentOffset}, bytesDiff=${bytesDiff}, bufferedAmounts=[${bufferedAmounts}]`);
 
           speedHistoryRef.current.push(currentSpeed);
           if (speedHistoryRef.current.length > 8) speedHistoryRef.current.shift();
@@ -619,16 +663,18 @@ export function useTransfer({
             connectionType: 'direct_host',
             merkleRoot: null,
             etaString: formatETA(totalSize - currentOffset, avgSpeed),
+            chunkSizeBytes: chunkSize,
           });
         }
-      }, 200);
+      }, TELEMETRY_SAMPLE_MS);
 
       while (senderProgress.offset < totalSize) {
         const activeChannels = channels.dataChannels && channels.dataChannels.length > 0
           ? channels.dataChannels
           : [channels.dataChannel];
 
-        const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
+        const readyDataLabels = senderReadyDataLabelsRef.current;
+        const openChannels = activeChannels.filter((ch) => ch.readyState === 'open' && readyDataLabels.has(ch.label));
         if (openChannels.length === 0) {
           await new Promise((r) => setTimeout(r, 2));
           continue;
@@ -642,43 +688,38 @@ export function useTransfer({
           }
         }
 
-        // Ultra-Fast Burst: Send up to 128 chunks (32MB) synchronously per event-loop tick
+        // A bounded burst leaves the event loop time to drain SCTP buffers.
         let burstSent = 0;
-        while (preBufferQueue.length > 0 && burstSent < 128) {
+        while (preBufferQueue.length > 0 && burstSent < BURST_SIZE) {
           const targetChannel = openChannels[senderProgress.chunkIndex % openChannels.length];
           const canSend = backpressure.canSend(targetChannel);
           if (!canSend) {
-            console.log(`[BurstLog] backpressure.canSend=false for ${targetChannel.label}, bufferedAmount=${targetChannel.bufferedAmount}, burstSent=${burstSent}`);
             break;
           }
 
           const item = preBufferQueue.shift()!;
           try {
-            if (bcRef.current) {
-              bcRef.current.postMessage(item.packet.buffer.slice(0));
-            }
             targetChannel.send(item.packet as any);
             backpressure.registerSentChunk(item.chunkIndex);
-            senderProgress.offset += (item.packet.byteLength - 16);
+            senderProgress.offset += item.payloadBytes;
             senderProgress.chunkIndex++;
             burstSent++;
           } catch (sendErr) {
             preBufferQueue.unshift(item);
+            console.warn('[Transfer] DataChannel send failed; retrying chunk', item.chunkIndex, sendErr);
             await new Promise((r) => setTimeout(r, 2));
             break;
           }
         }
-        if (burstSent > 0) {
-          console.log(`[BurstLog] burstSent=${burstSent}, preBufferRemaining=${preBufferQueue.length}, senderOffset=${senderProgress.offset}`);
-        }
-
         if (burstSent === 0) {
           await new Promise((r) => setTimeout(r, 4));
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
 
-        // Replenish pre-buffer in background
+        // Replenish in the background; fillPreBuffer prevents overlapping reads.
         if (!isReadingDone && preBufferQueue.length < PRE_BUFFER_SIZE / 2) {
-          fillPreBuffer();
+          void fillPreBuffer();
         }
 
         // Save session checkpoint to IndexedDB for auto-resume on refresh
@@ -696,8 +737,51 @@ export function useTransfer({
         }
       }
 
+      let idleAckSamples = 0;
+      let lastUnacknowledgedCount = Number.POSITIVE_INFINITY;
+      while (backpressure.getMetrics().unacknowledgedCount > 0) {
+        const currentUnacknowledged = backpressure.getMetrics().unacknowledgedCount;
+        if (currentUnacknowledged === lastUnacknowledgedCount) {
+          idleAckSamples++;
+        } else {
+          idleAckSamples = 0;
+          lastUnacknowledgedCount = currentUnacknowledged;
+        }
+
+        if (idleAckSamples > 1500) {
+          throw new Error(`Receiver stopped acknowledging chunks (${currentUnacknowledged} still pending)`);
+        }
+
+        await new Promise((r) => setTimeout(r, 20));
+      }
+
       if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
       telemetryIntervalRef.current = null;
+
+      try {
+        if (channels.controlChannel.readyState === 'open') {
+          channels.controlChannel.send(JSON.stringify({
+            type: 'transfer_complete',
+            fileSize: totalSize,
+            totalChunks: totalChunksEstimate,
+          }));
+        }
+      } catch {}
+
+      setTelemetry({
+        bytesTransferred: totalSize,
+        totalBytes: totalSize,
+        progressPercent: 100,
+        speedBytesPerSec: 0,
+        rttMs: bbr.getMetrics().rtt,
+        chunkIndex: totalChunksEstimate,
+        totalChunks: totalChunksEstimate,
+        bbrState: bbr.getMetrics().state,
+        connectionType: 'direct_host',
+        merkleRoot: null,
+        etaString: '--:--',
+        chunkSizeBytes: chunkSize,
+      });
 
       if (roomId) removeResumeSession(roomId);
       setState('verifying');
@@ -714,12 +798,24 @@ export function useTransfer({
   /**
    * Start Receiver Transfer Room — Reads Offer INSTANTLY from URL Hash (< 1ms!)
    */
-  const startReceiver = useCallback(async (targetRoomId: string) => {
+  const startReceiver = useCallback(async (targetRoomId: string, fileHandle?: any) => {
     if (receiverStartedRef.current === targetRoomId) {
       console.log('[Transfer] Receiver already started for room:', targetRoomId);
       return;
     }
     receiverStartedRef.current = targetRoomId;
+    isFinalizingRef.current = false;
+    setReceivedSavedToDisk(false);
+    setReceivedBlobUrl(null);
+    receiverStreamingRef.current = false;
+    receiverProgressRef.current = {
+      bytesTransferred: 0,
+      receivedChunks: 0,
+      totalBytes: 0,
+      totalChunks: 0,
+      chunkSize: DATA_CHUNK_SIZE,
+    };
+    speedHistoryRef.current = [];
     try {
       setRoomId(targetRoomId);
       setState('generating_key');
@@ -733,7 +829,7 @@ export function useTransfer({
 
       // Setup DiskWriter IMMEDIATELY so incoming packets are never dropped
       const writer = new DiskWriter(initialFileName, initialFileSize);
-      await writer.init();
+      await writer.init(fileHandle);
       diskWriterRef.current = writer;
       keepAliveRef.current?.start();
       setState('negotiating');
@@ -753,6 +849,10 @@ export function useTransfer({
           } catch {}
           await new Promise((r) => setTimeout(r, 100));
         }
+      }
+
+      if (!offerPayload?.sdp) {
+        throw new Error('The sender offer is unavailable. Ask the sender to create a new transfer link.');
       }
 
       const fileName = offerPayload?.fileName || initialFileName;
@@ -793,6 +893,7 @@ export function useTransfer({
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
         let currentPacketHandler: any = null;
+        let activeReceiverControlChannel: RTCDataChannel | null = null;
 
         const attachChannelListener = (channel: RTCDataChannel) => {
           if (channel) {
@@ -802,21 +903,17 @@ export function useTransfer({
                 currentPacketHandler(event);
               }
             };
+            const announceLaneReady = () => {
+              try {
+                if (activeReceiverControlChannel?.readyState === 'open' && channel.label.startsWith('data')) {
+                  activeReceiverControlChannel.send(JSON.stringify({ type: 'data_channel_ready', label: channel.label }));
+                }
+              } catch {}
+            };
+            channel.addEventListener('open', announceLaneReady);
+            if (channel.readyState === 'open') announceLaneReady();
           }
         };
-
-        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-          const bc = new BroadcastChannel(`pv_bc_${cleanRoomId}`);
-          bcRef.current = bc;
-          bc.postMessage({ type: 'receiver_ready' });
-          bc.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer || event.data?.buffer instanceof ArrayBuffer) {
-              if (currentPacketHandler) {
-                currentPacketHandler({ data: event.data } as MessageEvent);
-              }
-            }
-          };
-        }
 
         // Create Receiver PeerConnection with dynamic channel binding
         const { pc } = createReceiverPeerConnection(
@@ -825,6 +922,7 @@ export function useTransfer({
             const activeControl = channels.controlChannel || channels.dataChannel;
             const activeData = channels.dataChannel || channels.controlChannel;
             if (activeControl && activeData && !currentPacketHandler) {
+              activeReceiverControlChannel = activeControl;
               setState('connected');
               addLog('CHANNEL', 'Receiver WebRTC connection established!');
               currentPacketHandler = setupReceiverChannelListeners(
@@ -925,8 +1023,6 @@ export function useTransfer({
 
         const processedSenderCandidates = new Set<string>();
 
-        const processedStagingChunks = new Set<number>();
-
         // Listen for Sender ICE Candidates over dual signaling relays
         signalPollerRef.current = setInterval(async () => {
           try {
@@ -941,41 +1037,6 @@ export function useTransfer({
                     try {
                       await pc.addIceCandidate(new RTCIceCandidate(cand));
                     } catch {}
-                  }
-                }
-              }
-            }
-          } catch {}
-          // Fallback staging check if WebRTC P2P is delayed or blocked
-          try {
-            const stRes = await fetch(`/api/signal?action=get_staging&roomId=${cleanRoomId}`);
-            if (stRes.ok) {
-              const stData = await stRes.json();
-              if (stData.available && stData.chunks && stData.chunks.length > 0) {
-                for (const item of stData.chunks) {
-                  if (processedStagingChunks.has(item.index)) continue;
-                  processedStagingChunks.add(item.index);
-
-                  let bytes: Uint8Array;
-                  if (item.dataB64) {
-                    const binary = atob(item.dataB64);
-                    bytes = new Uint8Array(binary.length);
-                    for (let i = 0; i < binary.length; i++) {
-                      bytes[i] = binary.charCodeAt(i);
-                    }
-                  } else if (item.dataHex) {
-                    const hexStr: string = item.dataHex;
-                    const len = hexStr.length / 2;
-                    bytes = new Uint8Array(len);
-                    for (let i = 0; i < len; i++) {
-                      bytes[i] = parseInt(hexStr.substring(i * 2, i * 2 + 2), 16);
-                    }
-                  } else {
-                    continue;
-                  }
-
-                  if (currentPacketHandler) {
-                    currentPacketHandler({ data: bytes.buffer } as MessageEvent);
                   }
                 }
               }
@@ -1001,20 +1062,70 @@ export function useTransfer({
     fileSize: number,
     dataChannels?: RTCDataChannel[]
   ) => {
-    let receivedBytes = 0;
-    let chunkCount = 0;
     let actualFileSize = fileSize;
     let actualFileName = fileName;
+    let nominalChunkSize = DATA_CHUNK_SIZE;
     const receivedChunkSet = new Set<number>();
 
     lastSampleTimeRef.current = Date.now();
     lastByteCountRef.current = 0;
-    let currentSpeed = 0;
+    speedHistoryRef.current = [];
+
+    const syncExpectedTotals = () => {
+      const progress = receiverProgressRef.current;
+      const totalChunks = actualFileSize > 0 ? Math.ceil(actualFileSize / nominalChunkSize) : 0;
+      progress.totalBytes = actualFileSize;
+      progress.totalChunks = totalChunks;
+      progress.chunkSize = nominalChunkSize;
+      return progress;
+    };
+
+    const sampleTelemetry = () => {
+      const progress = receiverProgressRef.current;
+      const now = Date.now();
+      const timeDiff = (now - lastSampleTimeRef.current) / 1000;
+      if (timeDiff <= 0) return;
+
+      const bytesDiff = Math.max(0, progress.bytesTransferred - lastByteCountRef.current);
+      const currentSpeed = bytesDiff / timeDiff;
+      lastByteCountRef.current = progress.bytesTransferred;
+      lastSampleTimeRef.current = now;
+      speedHistoryRef.current.push(currentSpeed);
+      if (speedHistoryRef.current.length > 8) speedHistoryRef.current.shift();
+      const averageSpeed = speedHistoryRef.current.reduce((sum, speed) => sum + speed, 0) / speedHistoryRef.current.length;
+      const progressPercent = progress.totalBytes > 0
+        ? Math.min(100, (progress.bytesTransferred / progress.totalBytes) * 100)
+        : 0;
+
+      setTelemetry({
+        bytesTransferred: progress.bytesTransferred,
+        totalBytes: progress.totalBytes,
+        totalChunks: progress.totalChunks,
+        progressPercent,
+        speedBytesPerSec: currentSpeed,
+        rttMs: 0,
+        chunkIndex: progress.receivedChunks,
+        bbrState: 'STREAMING',
+        connectionType: 'direct_host',
+        merkleRoot: null,
+        etaString: formatETA(progress.totalBytes - progress.bytesTransferred, averageSpeed),
+        chunkSizeBytes: progress.chunkSize,
+      });
+    };
+
+    const initialProgress = syncExpectedTotals();
+    setTelemetry((previous) => ({
+      ...previous,
+      totalBytes: initialProgress.totalBytes,
+      totalChunks: initialProgress.totalChunks,
+    }));
+    if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+    telemetryIntervalRef.current = setInterval(sampleTelemetry, TELEMETRY_SAMPLE_MS);
 
     if (controlChannel && 'binaryType' in controlChannel) {
       controlChannel.binaryType = 'arraybuffer';
 
-      // Control Channel listener for metadata, ACKs & BBR pings
+      // Control frames never carry file data; they only describe the stream and ACK it.
       controlChannel.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -1027,6 +1138,10 @@ export function useTransfer({
             if (msg.fileSize && msg.fileSize > 0) {
               actualFileSize = msg.fileSize;
             }
+            if (Number.isInteger(msg.chunkSize) && msg.chunkSize >= 16 * 1024 && msg.chunkSize <= 1024 * 1024) {
+              nominalChunkSize = msg.chunkSize;
+            }
+            syncExpectedTotals();
           } else if (msg.type === 'bbr_ping') {
             try {
               controlChannel.send(JSON.stringify({ type: 'bbr_pong', ts: msg.ts }));
@@ -1038,7 +1153,11 @@ export function useTransfer({
 
     const handlePacket = async (event: MessageEvent) => {
       try {
-        setState('streaming');
+        if (isFinalizingRef.current) return;
+        if (!receiverStreamingRef.current) {
+          receiverStreamingRef.current = true;
+          setState('streaming');
+        }
         keepAliveRef.current?.start();
         let rawPacket: ArrayBuffer;
         if (event.data instanceof Blob) {
@@ -1055,19 +1174,34 @@ export function useTransfer({
 
         const packetView = new DataView(rawPacket);
         const chunkIndex = packetView.getUint32(0, false);
+        const packetChunkSize = packetView.getUint32(4, false);
         const payload = rawPacket.slice(16);
 
-        // Deduplicate duplicate packets arriving over multi-channel/relay
+        if (packetChunkSize >= 16 * 1024 && packetChunkSize <= 1024 * 1024) {
+          nominalChunkSize = packetChunkSize;
+        }
+        const progress = syncExpectedTotals();
+        if (progress.totalChunks > 0 && chunkIndex >= progress.totalChunks) return;
+
+        if (progress.totalBytes > 0) {
+          const expectedPayloadBytes = chunkIndex === progress.totalChunks - 1
+            ? progress.totalBytes - chunkIndex * nominalChunkSize
+            : nominalChunkSize;
+          if (payload.byteLength !== expectedPayloadBytes) return;
+        }
+
+        // Deduplicate before storage: several data channels can deliver out of order,
+        // but every index is written exactly once.
         if (receivedChunkSet.has(chunkIndex)) {
           return;
         }
         receivedChunkSet.add(chunkIndex);
 
         if (diskWriterRef.current) {
-          const writeOffset = chunkIndex * payload.byteLength;
+          const writeOffset = chunkIndex * nominalChunkSize;
           await diskWriterRef.current.writeChunk(payload, writeOffset, chunkIndex);
-          receivedBytes += payload.byteLength;
-          chunkCount++;
+          progress.bytesTransferred += payload.byteLength;
+          progress.receivedChunks = receivedChunkSet.size;
 
           try {
             if (controlChannel && controlChannel.readyState === 'open') {
@@ -1075,50 +1209,40 @@ export function useTransfer({
             }
           } catch {}
 
-          const targetSize = actualFileSize || fileSize || receivedBytes;
-          const currentChunkSize = payload.byteLength || 256000;
-          const totalChunksEst = Math.ceil(targetSize / currentChunkSize);
-          const progressPercent = targetSize > 0 ? Math.min(100, (receivedBytes / targetSize) * 100) : 0;
-
-          const now = Date.now();
-          const timeDiff = (now - lastSampleTimeRef.current) / 1000;
-          if (timeDiff >= 0.2) {
-            const bytesDiff = receivedBytes - lastByteCountRef.current;
-            currentSpeed = bytesDiff / timeDiff;
-            lastByteCountRef.current = receivedBytes;
-            lastSampleTimeRef.current = now;
-          }
-
-          setTelemetry({
-            bytesTransferred: receivedBytes,
-            totalBytes: targetSize,
-            totalChunks: totalChunksEst,
-            progressPercent,
-            speedBytesPerSec: currentSpeed,
-            rttMs: 0,
-            chunkIndex: chunkCount,
-            bbrState: 'STREAMING',
-            connectionType: 'direct_host',
-            merkleRoot: null,
-            etaString: formatETA(targetSize - receivedBytes, currentSpeed),
-          });
-
-          if (chunkCount % 50 === 0 && roomId) {
+          if (progress.receivedChunks % 50 === 0 && roomId) {
             saveResumeSession({
               roomId,
               role: 'receiver',
               fileName: actualFileName,
-              fileSize: targetSize,
-              totalChunks: Math.ceil(targetSize / 64512),
+              fileSize: progress.totalBytes,
+              totalChunks: progress.totalChunks,
               completedChunksBitmap: [chunkIndex],
-              bytesTransferred: receivedBytes,
+              bytesTransferred: progress.bytesTransferred,
               updatedAt: Date.now(),
             });
           }
 
-          const isFullyReceived = (receivedBytes >= targetSize) || (totalChunksEst > 0 && chunkCount >= totalChunksEst);
-          if (isFullyReceived && targetSize > 0 && !isFinalizingRef.current) {
+          const isFullyReceived = progress.totalBytes > 0
+            && progress.bytesTransferred === progress.totalBytes
+            && progress.receivedChunks === progress.totalChunks;
+          if (isFullyReceived && !isFinalizingRef.current) {
             isFinalizingRef.current = true;
+            if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+            telemetryIntervalRef.current = null;
+            setTelemetry({
+              bytesTransferred: progress.totalBytes,
+              totalBytes: progress.totalBytes,
+              totalChunks: progress.totalChunks,
+              progressPercent: 100,
+              speedBytesPerSec: 0,
+              rttMs: 0,
+              chunkIndex: progress.totalChunks,
+              bbrState: 'COMPLETE',
+              connectionType: 'direct_host',
+              merkleRoot: null,
+              etaString: '--:--',
+              chunkSizeBytes: progress.chunkSize,
+            });
             if (roomId) removeResumeSession(roomId);
             setState('verifying');
             const result = await diskWriterRef.current.close();
@@ -1128,6 +1252,7 @@ export function useTransfer({
             if (result?.downloadUrl) {
               setReceivedBlobUrl(result.downloadUrl);
             }
+            setReceivedSavedToDisk(result?.tier === 'direct_fs');
             setState('complete');
 
             fetch('/api/log', {
@@ -1137,7 +1262,7 @@ export function useTransfer({
                 event: 'transfer_completed',
                 roomId: roomId?.split('#')[0] || 'unknown',
                 fileName: actualFileName,
-                fileSize: targetSize,
+                fileSize: progress.totalBytes,
               }),
             }).catch(() => {});
           }
@@ -1147,15 +1272,26 @@ export function useTransfer({
       }
     };
 
+    const sendDataChannelReady = (ch: RTCDataChannel) => {
+      try {
+        if (controlChannel && controlChannel.readyState === 'open') {
+          controlChannel.send(JSON.stringify({ type: 'data_channel_ready', label: ch.label }));
+        }
+      } catch {}
+    };
+
     const setupChannel = (ch: RTCDataChannel) => {
       if (ch) {
         ch.binaryType = 'arraybuffer';
         ch.onmessage = handlePacket;
-        ch.onopen = () => {
+        ch.addEventListener('open', () => {
           ch.onmessage = handlePacket;
+          sendDataChannelReady(ch);
           addLog('CHANNEL', `Receiver DataChannel ${ch.label} opened and bound to disk writer!`);
-          setState('streaming');
-        };
+        });
+        if (ch.readyState === 'open') {
+          sendDataChannelReady(ch);
+        }
       }
     };
 
@@ -1163,6 +1299,24 @@ export function useTransfer({
     for (const ch of targetDataChannels) {
       setupChannel(ch);
     }
+
+    let readyAnnounced = false;
+    const announceReady = () => {
+      if (readyAnnounced || controlChannel.readyState !== 'open') return;
+      if (!targetDataChannels.some((channel) => channel.readyState === 'open')) return;
+      try {
+        controlChannel.send(JSON.stringify({ type: 'receiver_ready' }));
+        for (const channel of targetDataChannels) {
+          if (channel.readyState === 'open') sendDataChannelReady(channel);
+        }
+        readyAnnounced = true;
+      } catch {}
+    };
+    controlChannel.addEventListener('open', announceReady);
+    for (const channel of targetDataChannels) {
+      channel.addEventListener('open', announceReady);
+    }
+    announceReady();
 
     return handlePacket;
   };
@@ -1182,6 +1336,7 @@ export function useTransfer({
     telemetry,
     receivedBlobUrl,
     receivedFileName,
+    receivedSavedToDisk,
     startSender,
     startReceiver,
     resetTransfer,

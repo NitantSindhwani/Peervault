@@ -13,7 +13,7 @@ export interface WindowMetrics {
 }
 
 export class BackpressureController {
-  private windowSize: number = 4096; // 4096 chunks (up to 1GB window)
+  private windowSize: number = 32; // Keep in-flight chunks bounded until receiver ACKs drain.
   private unacknowledged: Set<number> = new Set();
   private bufferedAmountLowThreshold: number = 2 * 1024 * 1024; // 2MB
   private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB per channel
@@ -42,6 +42,11 @@ export class BackpressureController {
    * Check whether sender is allowed to transmit next chunk
    */
   public canSend(dataChannel: RTCDataChannel): boolean {
+    if (this.unacknowledged.size >= this.windowSize) {
+      if (!this.isPaused) this.setPaused(true);
+      return false;
+    }
+
     if (dataChannel.bufferedAmount >= this.maxBufferedAmount) {
       if (!this.isPaused) this.setPaused(true);
       return false;

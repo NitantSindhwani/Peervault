@@ -40,6 +40,8 @@ export class DiskWriter {
   private writtenSize: number = 0;
   private streamId: string;
   private tier: DiskWriterTier = 'indexeddb_paging';
+  // Key by protocol chunk index, never by a chunk's own byte length. The last
+  // packet is normally shorter, so offset-derived keys corrupt its sort order.
   private memoryChunksMap = new Map<number, ArrayBuffer>();
   private useDBPaging: boolean = true;
   private fileHandle: any = null;
@@ -107,7 +109,9 @@ export class DiskWriter {
         this.tier = 'direct_fs';
         this.useDBPaging = false;
         return true;
-      } catch {}
+      } catch (err) {
+        throw new Error(`Could not open direct file writer: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
     }
 
     if (this.useDBPaging) {
@@ -141,7 +145,9 @@ export class DiskWriter {
         });
         this.writtenSize += chunk.byteLength;
         return;
-      } catch {}
+      } catch (err) {
+        throw new Error(`Direct file write failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
     }
 
     if (this.useDBPaging) {
@@ -165,10 +171,10 @@ export class DiskWriter {
       }
     }
 
-    if (!this.memoryChunksMap.has(offset)) {
+    if (!this.memoryChunksMap.has(chunkIndex)) {
       this.writtenSize += chunk.byteLength;
     }
-    this.memoryChunksMap.set(offset, chunk.slice(0));
+    this.memoryChunksMap.set(chunkIndex, chunk.slice(0));
   }
 
   private async flushPendingWriteBuffer(): Promise<void> {
@@ -204,7 +210,9 @@ export class DiskWriter {
         await this.writableStream.close();
         const dummyBlob = new Blob([], { type: this.mimeType });
         return { downloadUrl: '', blob: dummyBlob, tier: 'direct_fs' };
-      } catch {}
+      } catch (err) {
+        throw new Error(`Direct file close failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
     }
 
     await this.flushPendingWriteBuffer();

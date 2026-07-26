@@ -1,17 +1,29 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+const MAX_SIGNAL_BODY_BYTES = 128 * 1024;
+
 // Cloudflare Workers & Serverless Universal In-Memory Signaling Cache
 const globalForSignal = globalThis as unknown as {
   signalCache: Map<string, { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }>;
-  stagingCache: Map<string, { chunks: Map<number, any>; updatedAt: number; totalChunks: number; fileName: string; fileSize: number }>;
 };
 
 const signalCache = globalForSignal.signalCache || new Map();
-const stagingCache = globalForSignal.stagingCache || new Map();
 
 globalForSignal.signalCache = signalCache;
-globalForSignal.stagingCache = stagingCache;
+
+function signalResponse(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
+      ...(init?.headers || {}),
+    },
+  });
+}
 
 function readSignalState(roomId: string) {
   let state = signalCache.get(roomId);
@@ -26,57 +38,50 @@ function writeSignalState(roomId: string, state: any) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const roomId = searchParams.get('roomId');
-  const action = searchParams.get('action');
 
   if (!roomId) {
-    return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
+    return signalResponse({ error: 'Missing roomId' }, { status: 400 });
   }
 
   const cleanId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
-
-  if (action === 'get_staging') {
-    const stage = stagingCache.get(cleanId);
-    if (!stage) {
-      return NextResponse.json({ available: false });
-    }
-
-    const chunkArray = Array.from(stage.chunks.values());
-    return NextResponse.json({
-      available: true,
-      fileName: stage.fileName,
-      fileSize: stage.fileSize,
-      totalChunks: stage.totalChunks,
-      receivedCount: stage.chunks.size,
-      chunks: chunkArray,
-    });
+  if (!cleanId) {
+    return signalResponse({ error: 'Invalid roomId' }, { status: 400 });
   }
 
   const state = readSignalState(cleanId);
-  return NextResponse.json(state);
+  return signalResponse(state);
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const contentLength = Number(request.headers.get('content-length') || '0');
+    if (contentLength > MAX_SIGNAL_BODY_BYTES) {
+      return signalResponse({ error: 'Signal payload is too large' }, { status: 413 });
+    }
+
     const body = await request.json();
-    const { roomId, action, offer, answer, candidate, chunkIndex, chunkDataB64, chunkDataHex, totalChunks, fileName, fileSize } = body;
+    const { roomId, action, offer, answer, candidate } = body;
 
     if (!roomId) {
-      return NextResponse.json({ error: 'Missing roomId' }, { status: 400 });
+      return signalResponse({ error: 'Missing roomId' }, { status: 400 });
     }
 
     const cleanId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!cleanId) {
+      return signalResponse({ error: 'Invalid roomId' }, { status: 400 });
+    }
     const state = readSignalState(cleanId);
 
     if (action === 'submit_offer' && offer) {
       state.offer = offer;
       writeSignalState(cleanId, state);
-      return NextResponse.json({ success: true, message: 'Offer registered' });
+      return signalResponse({ success: true, message: 'Offer registered' });
     }
 
     if (action === 'submit_answer' && answer) {
       state.answer = answer;
       writeSignalState(cleanId, state);
-      return NextResponse.json({ success: true, message: 'Answer registered' });
+      return signalResponse({ success: true, message: 'Answer registered' });
     }
 
     if (action === 'submit_sender_candidate' && candidate) {
@@ -87,7 +92,7 @@ export async function POST(request: NextRequest) {
         state.senderCandidates.push(candidate);
         writeSignalState(cleanId, state);
       }
-      return NextResponse.json({ success: true });
+      return signalResponse({ success: true });
     }
 
     if (action === 'submit_receiver_candidate' && candidate) {
@@ -98,34 +103,11 @@ export async function POST(request: NextRequest) {
         state.receiverCandidates.push(candidate);
         writeSignalState(cleanId, state);
       }
-      return NextResponse.json({ success: true });
+      return signalResponse({ success: true });
     }
 
-    if (action === 'submit_staging' && typeof chunkIndex === 'number') {
-      let stage = stagingCache.get(cleanId);
-      if (!stage) {
-        stage = {
-          chunks: new Map(),
-          updatedAt: Date.now(),
-          totalChunks: totalChunks || 0,
-          fileName: fileName || 'file',
-          fileSize: fileSize || 0,
-        };
-        stagingCache.set(cleanId, stage);
-      }
-
-      stage.chunks.set(chunkIndex, {
-        index: chunkIndex,
-        dataB64: chunkDataB64,
-        dataHex: chunkDataHex,
-      });
-      stage.updatedAt = Date.now();
-
-      return NextResponse.json({ success: true, count: stage.chunks.size });
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    return signalResponse({ error: 'Invalid action' }, { status: 400 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
+    return signalResponse({ error: err.message || 'Server error' }, { status: 500 });
   }
 }

@@ -2,14 +2,14 @@
  * Hardened PeerVault Adaptive Chunk Sizer (LEDBAT Probing Engine)
  * 
  * Dynamically adjusts chunk sizes in real time based on active network stability.
- * Scales down to 16KB when packet loss/jitter spikes, and scales up to 256KB on
+ * Scales down to 64KB when packet loss/jitter spikes, and scales up to 128KB on
  * stable low-latency networks.
  */
 
 export class AdaptiveChunkScaler {
-  private currentChunkSize: number = 256 * 1024; // 256KB default
+  private currentChunkSize: number = 128 * 1024; // 128KB default
   private minChunkSize: number = 64 * 1024;      // 64KB min
-  private maxChunkSize: number = 256 * 1024;     // 256KB max
+  private maxChunkSize: number = 128 * 1024;     // 128KB max
   private stableWindowCount: number = 0;
   private lossCount: number = 0;
 

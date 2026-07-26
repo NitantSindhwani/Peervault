@@ -27,8 +27,9 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attestation, setAttestation] = useState<WebAuthnAttestationResult | null>(null);
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
 
-  const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, startReceiver } = useTransfer({
+  const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, receivedSavedToDisk, startReceiver } = useTransfer({
     role: 'receiver',
     roomId,
     passphrase,
@@ -81,16 +82,47 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     };
   }, [roomId]);
 
+  const fileSizeBytes = telemetry.totalBytes || offerPayload?.fileSize || 0;
+  const requiresDirectSave = fileSizeBytes >= 128 * 1024 * 1024;
+
+  const requestDirectSaveHandle = async () => {
+    if (!requiresDirectSave) return undefined;
+    const picker = (window as any).showSaveFilePicker;
+    if (typeof picker !== 'function') {
+      throw new Error('This browser cannot stream very large files directly to disk. Use Chrome or Edge for large transfers.');
+    }
+
+    return picker({
+      suggestedName: fileName,
+      types: [
+        {
+          description: 'PeerVault transfer',
+          accept: { 'application/octet-stream': ['.' + (fileName.split('.').pop() || 'bin')] },
+        },
+      ],
+    });
+  };
+
+  const beginReceive = async () => {
+    setAcceptError(null);
+    try {
+      const fileHandle = await requestDirectSaveHandle();
+      setIsUnlocked(true);
+      setHasAccepted(true);
+      startReceiver(roomId, fileHandle);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      setAcceptError(err?.message || 'Could not start receiver');
+    }
+  };
+
   const unlockRoom = async () => {
     setIsUnlocked(true);
-    setHasAccepted(true);
-    startReceiver(roomId);
+    await beginReceive();
   };
 
   const handleAcceptTransfer = async () => {
-    setIsUnlocked(true);
-    setHasAccepted(true);
-    startReceiver(roomId);
+    await beginReceive();
   };
 
   const handleBiometricAttest = async () => {
@@ -139,7 +171,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     rawName += '.jpg';
   }
   const fileName = rawName;
-  const fileSizeMb = (telemetry.totalBytes ? telemetry.totalBytes / (1024 * 1024) : (offerPayload?.fileSize || 0) / (1024 * 1024)).toFixed(1);
+  const fileSizeMb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
 
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(fileName);
   const isAudio = /\.(mp3|wav|ogg|m4a|flac)$/i.test(fileName);
@@ -163,7 +195,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           {fileName}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-          Direct browser-to-browser stream with BLAKE3 Merkle integrity checks & zero server storage.
+          Direct browser-to-browser stream with ordered chunk reconstruction and zero server storage.
         </p>
       </div>
 
@@ -240,10 +272,10 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           <div className="bg-[var(--bg-main)] rounded-xl p-4 border border-[var(--border-color)] space-y-2 text-xs text-[var(--text-secondary)]">
             <div className="flex items-center gap-2 text-[var(--success)] font-bold">
               <ShieldCheck className="w-4 h-4" />
-              <span>AES-256-GCM End-to-End Encrypted</span>
+              <span>Direct peer-to-peer file stream</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              File streams directly from sender device. Zero bytes are uploaded to cloud servers.
+              File streams from the sender device. Large files are written directly to your chosen save location.
             </p>
           </div>
 
@@ -254,6 +286,11 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             <DownloadSimple className="w-5 h-5" weight="bold" />
             <span>Accept & Receive File ({fileSizeMb} MB)</span>
           </button>
+          {acceptError && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {acceptError}
+            </p>
+          )}
         </div>
       ) : !isCompleted ? (
         /* Active Stream Download View */
@@ -286,7 +323,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             liveData={{
               ...telemetry,
               totalBytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
-              totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 256000),
+              totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 262144),
             }}
           />
 
@@ -305,12 +342,17 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                 File Stream Complete!
               </h2>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-md mx-auto">
-                <strong>{fileName}</strong> is ready. View it inside the app below or download it directly to your device.
+                <strong>{fileName}</strong> {receivedSavedToDisk ? 'has been saved directly to your selected file.' : 'is ready. View it inside the app below or save it directly to your device.'}
               </p>
             </div>
 
             {/* DIRECT 1-CLICK IN-APP DOWNLOAD BUTTON */}
-            {receivedBlobUrl && (
+            {receivedSavedToDisk ? (
+              <div className="w-full py-4 rounded-xl bg-[var(--success)]/10 text-[var(--success)] font-mono text-sm font-bold border border-[var(--success)]/40 flex items-center justify-center gap-2 shadow-xl">
+                <CheckCircle className="w-5 h-5" weight="fill" />
+                <span>Saved Directly to Disk ({fileSizeMb} MB)</span>
+              </div>
+            ) : receivedBlobUrl && (
               <a
                 href={receivedBlobUrl}
                 download={fileName}

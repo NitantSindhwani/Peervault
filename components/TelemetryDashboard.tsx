@@ -45,6 +45,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
     connectionType: 'Direct LAN/P2P',
     merkleVerifiedCount: 0,
     memoryUsedMb: getRealMemoryMb(),
+    chunkSizeBytes: 262144,
   });
 
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
@@ -212,7 +213,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
 
         <div className="flex justify-between text-[11px] text-[var(--text-secondary)]">
           <span>Verified Leaves: {telemetry.merkleVerifiedCount.toLocaleString()} / {telemetry.totalChunks.toLocaleString()}</span>
-          <span>Chunk Size: {Math.round((telemetry.chunkSizeBytes || 262144) / 1024)} KB</span>
+          <span>Chunk Size: {Math.round((telemetry.chunkSizeBytes ?? 262144) / 1024)} KB</span>
         </div>
       </div>
 

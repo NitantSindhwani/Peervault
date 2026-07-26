@@ -592,8 +592,8 @@ export function useTransfer({
       
       // A single small reader avoids the old race where many 64 MB fills ran at
       // once, overwhelming the JS heap and queuing data out of order.
-      const PRE_BUFFER_SIZE = 32;
-      const BURST_SIZE = 16;
+      const PRE_BUFFER_SIZE = 128;
+      const BURST_SIZE = 64;
       const preBufferQueue: Array<{ chunkIndex: number; payloadBytes: number; packet: Uint8Array }> = [];
       let bufferOffset = 0;
       let bufferChunkIndex = 0;
@@ -673,8 +673,7 @@ export function useTransfer({
           ? channels.dataChannels
           : [channels.dataChannel];
 
-        const readyDataLabels = senderReadyDataLabelsRef.current;
-        const openChannels = activeChannels.filter((ch) => ch.readyState === 'open' && readyDataLabels.has(ch.label));
+        const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
         if (openChannels.length === 0) {
           await new Promise((r) => setTimeout(r, 2));
           continue;
@@ -712,9 +711,7 @@ export function useTransfer({
           }
         }
         if (burstSent === 0) {
-          await new Promise((r) => setTimeout(r, 4));
-        } else {
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          await new Promise((r) => setTimeout(r, 2));
         }
 
         // Replenish in the background; fillPreBuffer prevents overlapping reads.

@@ -43,11 +43,23 @@ function base64UrlDecode(str: string): Uint8Array {
   return bytes;
 }
 
+export function minifySdp(sdp: string): string {
+  if (!sdp) return sdp;
+  return sdp
+    .split('\r\n')
+    .filter((line) => !line.startsWith('a=candidate:') && !line.startsWith('a=extmap:'))
+    .join('\r\n');
+}
+
 /**
  * Compress Offer Payload into a URL-Safe Base64 String (< 3ms execution)
  */
 export async function createInstantOfferHash(payload: InstantOfferPayload): Promise<string> {
-  const jsonStr = JSON.stringify(payload);
+  const minifiedPayload = {
+    ...payload,
+    sdp: minifySdp(payload.sdp),
+  };
+  const jsonStr = JSON.stringify(minifiedPayload);
   
   if (typeof CompressionStream !== 'undefined') {
     try {

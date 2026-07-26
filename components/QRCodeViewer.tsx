@@ -10,16 +10,13 @@ export interface QRCodeViewerProps {
 }
 
 export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
-  // Extract base room URL and replace localhost if necessary so mobile cameras hit the correct LAN IP / host
-  const rawCleanUrl = url.includes('#offer=') ? url.split('#offer=')[0] : url;
-  
   // Format URL so scanning from mobile phone on LAN doesn't hit phone's own localhost
-  let scannableUrl = rawCleanUrl;
+  let scannableUrl = url;
   if (typeof window !== 'undefined' && scannableUrl.includes('localhost') && window.location.hostname !== 'localhost') {
     scannableUrl = scannableUrl.replace('localhost', window.location.hostname);
   }
 
-  // Top-class free QR Code API (QRServer / QuickChart) for ultra-high-definition vector QR graphics
+  // Top-class free QR Code API (QRServer) for high-definition vector QR graphics
   const apiQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size * 2}x${size * 2}&data=${encodeURIComponent(scannableUrl)}&margin=10&color=0d0f14&bgcolor=ffffff`;
 
   const [useFallbackSvg, setUseFallbackSvg] = useState(false);
@@ -46,7 +43,7 @@ export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
             <QRCodeSVG
               value={scannableUrl}
               size={size}
-              level="M"
+              level="L"
               includeMargin={true}
               bgColor="#FFFFFF"
               fgColor="#0D0F14"

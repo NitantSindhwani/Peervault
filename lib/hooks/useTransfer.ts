@@ -58,7 +58,7 @@ export interface LiveTelemetryState {
   chunkSizeBytes: number;
 }
 
-const DATA_CHUNK_SIZE = 128 * 1024;
+const DATA_CHUNK_SIZE = 64 * 1024;
 const DATA_CHANNEL_COUNT = 8;
 const TELEMETRY_SAMPLE_MS = 200;
 
@@ -185,6 +185,49 @@ export function useTransfer({
     });
   }, [addLog]);
 
+  const wakeLockSentinelRef = useRef<any>(null);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLockSentinelRef.current = await (navigator as any).wakeLock.request('screen');
+      } catch {}
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockSentinelRef.current) {
+      try {
+        wakeLockSentinelRef.current.release();
+      } catch {}
+      wakeLockSentinelRef.current = null;
+    }
+  }, []);
+
+  // Automatically acquire Screen WakeLock on active transfer states to prevent mobile CPU/Wi-Fi throttling
+  useEffect(() => {
+    if (state === 'streaming' || state === 'waiting_peer' || state === 'signaling') {
+      acquireWakeLock();
+    } else if (state === 'complete' || state === 'error' || state === 'aborted' || state === 'idle') {
+      releaseWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && (state === 'streaming' || state === 'waiting_peer')) {
+        acquireWakeLock();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [state, acquireWakeLock, releaseWakeLock]);
+
   // Initialize WorkerPool and KeepAlive
   useEffect(() => {
     workerPoolRef.current = new WorkerPool(3);
@@ -192,6 +235,7 @@ export function useTransfer({
     keepAliveRef.current = new KeepAliveManager();
 
     return () => {
+      releaseWakeLock();
       workerPoolRef.current?.terminate();
       keepAliveRef.current?.stop();
       bbrRef.current?.stopPingLoop();
@@ -199,7 +243,7 @@ export function useTransfer({
       if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
       peerChannelsRef.current?.pc.close();
     };
-  }, []);
+  }, [releaseWakeLock]);
 
   const resetTransfer = useCallback(() => {
     senderStartedRef.current = false;

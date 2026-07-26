@@ -7,7 +7,7 @@
  * - Huge Files (2 GB – 100+ GB): Native File System Access API & IndexedDB Chunk Slicing.
  */
 
-export type DiskWriterTier = 'memory_blob' | 'indexeddb_paging' | 'direct_fs';
+export type DiskWriterTier = 'memory_blob' | 'indexeddb_paging' | 'direct_fs' | 'opfs';
 
 const DB_NAME = 'peervault_disk_writer_db';
 const DB_VERSION = 1;
@@ -46,6 +46,7 @@ export class DiskWriter {
   private useDBPaging: boolean = true;
   private fileHandle: any = null;
   private writableStream: any = null;
+  private opfsFileHandle: any = null;
 
   constructor(fileName: string, fileSize: number, mimeType?: string) {
     this.fileName = fileName;
@@ -110,11 +111,29 @@ export class DiskWriter {
         this.useDBPaging = false;
         return true;
       } catch (err) {
-        console.warn('[DiskWriter] Direct file handle createWritable failed, falling back to IndexedDB paging:', err);
+        console.warn('[DiskWriter] Direct file handle createWritable failed, falling back to OPFS/IndexedDB:', err);
         this.fileHandle = null;
         this.writableStream = null;
-        this.useDBPaging = true;
-        this.tier = 'indexeddb_paging';
+      }
+    }
+
+    // Try OPFS (Origin Private File System) for ultra-fast NVMe storage if no user direct fileHandle is provided
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
+      try {
+        const root = await navigator.storage.getDirectory();
+        const cleanName = this.fileName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'stream.bin';
+        const opfsFile = await root.getFileHandle(`${this.streamId}_${cleanName}`, { create: true });
+        this.opfsFileHandle = opfsFile;
+        if (typeof opfsFile.createWritable === 'function') {
+          this.writableStream = await opfsFile.createWritable();
+          this.tier = 'opfs';
+          this.useDBPaging = false;
+          return true;
+        }
+      } catch (opfsErr) {
+        console.warn('[DiskWriter] OPFS initialization failed, using IndexedDB/memory fallback:', opfsErr);
+        this.opfsFileHandle = null;
+        this.writableStream = null;
       }
     }
 
@@ -214,6 +233,13 @@ export class DiskWriter {
         await this.writableStream.close();
         let downloadUrl = '';
         let fileBlob: Blob = new Blob([], { type: this.mimeType });
+        if (this.tier === 'opfs' && this.opfsFileHandle && typeof this.opfsFileHandle.getFile === 'function') {
+          try {
+            fileBlob = await this.opfsFileHandle.getFile();
+            downloadUrl = URL.createObjectURL(fileBlob);
+          } catch {}
+          return { downloadUrl, blob: fileBlob, tier: 'opfs' };
+        }
         if (this.fileHandle && typeof this.fileHandle.getFile === 'function') {
           try {
             fileBlob = await this.fileHandle.getFile();

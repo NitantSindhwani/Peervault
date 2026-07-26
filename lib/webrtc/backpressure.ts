@@ -15,7 +15,7 @@ export interface WindowMetrics {
 export class BackpressureController {
   private windowSize: number = 32; // Keep in-flight chunks bounded until receiver ACKs drain.
   private unacknowledged: Set<number> = new Set();
-  private bufferedAmountLowThreshold: number = 2 * 1024 * 1024; // 2MB
+  private bufferedAmountLowThreshold: number = 4 * 1024 * 1024; // 4MB
   private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB per channel
   private minBufferedAmount: number = 4 * 1024 * 1024;    // 4MB
   private isPaused: boolean = false;

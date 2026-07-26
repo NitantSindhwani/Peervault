@@ -23,11 +23,11 @@ export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
 
   return (
     <div className="flex flex-col items-center space-y-3 font-mono">
-      {/* Premium Fabulous QR Card Container */}
-      <div className="relative group p-3.5 bg-gradient-to-br from-[#1A1D24] via-[#13151C] to-[#0D0F14] rounded-2xl border-2 border-[var(--accent)] shadow-[0_0_35px_rgba(234,140,40,0.3)] transition-all hover:scale-105 flex flex-col items-center">
+      {/* Premium Eye-Worthy QR Card Container */}
+      <div className="relative group p-4 bg-gradient-to-br from-[#1C1F26] via-[#14161D] to-[#0D0F14] rounded-2xl border-2 border-[var(--accent)] shadow-[0_0_35px_rgba(234,140,40,0.3)] transition-all duration-300 hover:scale-105 flex flex-col items-center">
         
-        {/* Glow Accent Rings */}
-        <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-[var(--accent)] via-amber-400 to-[var(--accent)] opacity-20 blur-md group-hover:opacity-40 transition-opacity pointer-events-none" />
+        {/* Glow Accent Ambient Ring */}
+        <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-[var(--accent)] via-amber-400 to-[var(--accent)] opacity-25 blur-md group-hover:opacity-50 transition-opacity pointer-events-none" />
 
         <div className="relative p-3 bg-white rounded-xl shadow-inner flex items-center justify-center overflow-hidden">
           {!useFallbackSvg ? (
@@ -37,13 +37,13 @@ export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
               width={size}
               height={size}
               onError={() => setUseFallbackSvg(true)}
-              className="w-full h-full object-contain rounded-lg"
+              className="w-full h-full object-contain rounded-lg shadow-sm"
             />
           ) : (
             <QRCodeSVG
               value={scannableUrl}
               size={size}
-              level="L"
+              level="M"
               includeMargin={true}
               bgColor="#FFFFFF"
               fgColor="#0D0F14"
@@ -52,15 +52,15 @@ export function QRCodeViewer({ url, size = 180 }: QRCodeViewerProps) {
         </div>
 
         {/* Brand Tag underneath QR code */}
-        <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-[var(--accent)] font-bold tracking-wider uppercase">
-          <Sparkle className="w-3 h-3 animate-spin" />
+        <div className="mt-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[10px] text-[var(--accent)] font-bold tracking-widest uppercase">
+          <Sparkle className="w-3.5 h-3.5 animate-spin" />
           <span>INSTANT P2P PAIRING</span>
         </div>
       </div>
 
       {/* Mobile Instruction Badge */}
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] text-[11px] text-[var(--text-secondary)] font-bold">
-        <DeviceMobile className="w-3.5 h-3.5 text-[var(--accent)]" />
+      <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] text-[11px] text-[var(--text-secondary)] font-bold shadow-sm">
+        <DeviceMobile className="w-4 h-4 text-[var(--accent)]" />
         <span>Scan with Camera or Lens</span>
       </div>
     </div>

@@ -489,22 +489,11 @@ export function useTransfer({
         const active = channels.dataChannels || [channels.dataChannel];
         const isControlOpen = channels.controlChannel.readyState === 'open';
         const hasAnyOpenData = active.some((ch) => ch.readyState === 'open');
-        const hasAnyReceiverReadyData = active.some((ch) => ch.readyState === 'open' && senderReadyDataLabelsRef.current.has(ch.label));
-        
-        // Ideal path: receiver confirmed onmessage listeners & data channel labels
-        if (receiverReady && isControlOpen && hasAnyReceiverReadyData) {
-          triggerStartStream();
-          return;
-        }
 
-        // Failsafe path: if receiver sent receiver_ready and at least one data channel is open
-        if (receiverReady && isControlOpen && hasAnyOpenData) {
-          setTimeout(() => {
-            if (!hasStartedStreaming) {
-              addLog('CHANNEL', 'Receiver ready failsafe triggered. Initiating stream transmission...');
-              triggerStartStream();
-            }
-          }, 800);
+        // Initiate stream transmission immediately once control & data channels reach open state
+        if (isControlOpen && hasAnyOpenData) {
+          addLog('CHANNEL', 'DataChannels open. Initiating high-speed stream transmission...');
+          triggerStartStream();
         }
       };
 
@@ -1248,14 +1237,6 @@ export function useTransfer({
           nominalChunkSize = packetChunkSize;
         }
         const progress = syncExpectedTotals();
-        if (progress.totalChunks > 0 && chunkIndex >= progress.totalChunks) return;
-
-        if (progress.totalBytes > 0) {
-          const expectedPayloadBytes = chunkIndex === progress.totalChunks - 1
-            ? progress.totalBytes - chunkIndex * nominalChunkSize
-            : nominalChunkSize;
-          if (payload.byteLength !== expectedPayloadBytes) return;
-        }
 
         // Deduplicate before storage: several data channels can deliver out of order,
         // but every index is written exactly once.
@@ -1369,7 +1350,6 @@ export function useTransfer({
     let readyAnnounced = false;
     const announceReady = () => {
       if (readyAnnounced || controlChannel.readyState !== 'open') return;
-      if (!targetDataChannels.some((channel) => channel.readyState === 'open')) return;
       try {
         controlChannel.send(JSON.stringify({ type: 'receiver_ready' }));
         for (const channel of targetDataChannels) {
@@ -1378,6 +1358,15 @@ export function useTransfer({
         readyAnnounced = true;
       } catch {}
     };
+
+    const readyInterval = setInterval(() => {
+      if (readyAnnounced) {
+        clearInterval(readyInterval);
+        return;
+      }
+      announceReady();
+    }, 100);
+
     controlChannel.addEventListener('open', announceReady);
     for (const channel of targetDataChannels) {
       channel.addEventListener('open', announceReady);

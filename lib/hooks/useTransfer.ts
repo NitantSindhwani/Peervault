@@ -491,7 +491,8 @@ export function useTransfer({
         const hasAnyOpenData = active.some((ch) => ch.readyState === 'open');
 
         // Initiate stream transmission immediately once control & data channels reach open state
-        if (isControlOpen && hasAnyOpenData) {
+        // AND the receiver has confirmed its handlers are ready (fixes 0 speed/0% bug).
+        if (isControlOpen && hasAnyOpenData && receiverReady) {
           addLog('CHANNEL', 'DataChannels open. Initiating high-speed stream transmission...');
           triggerStartStream();
         }

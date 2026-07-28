@@ -3,16 +3,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Lightning, ShareNetwork, Copy, ChartLineUp, LockKey, List, X, SpeakerHigh, SpeakerSimpleSlash } from '@phosphor-icons/react';
+import { Lightning, ShareNetwork, Copy, ChartLineUp, LockKey, List, X, SpeakerHigh, SpeakerSimpleSlash, QrCode } from '@phosphor-icons/react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'motion/react';
 import { soundEngine } from '@/lib/audio/sound-engine';
 import { ShinyText } from '@/components/TextAnimations';
 import { MagneticButton } from '@/components/MagneticButton';
+import { QRScannerModal } from '@/components/QRScannerModal';
 
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const isActive = (path: string) => pathname === path;
 
@@ -78,6 +80,20 @@ export function Navbar() {
               {isMuted ? <SpeakerSimpleSlash className="w-4 h-4 text-red-400" /> : <SpeakerHigh className="w-4 h-4 text-[var(--accent)]" />}
             </button>
 
+            {/* Mobile/Desktop QR Code Scanner Trigger */}
+            <button
+              onClick={() => {
+                soundEngine.playHoverClick();
+                setIsScannerOpen(true);
+              }}
+              className="p-2 sm:px-3 sm:py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors cursor-pointer shadow flex items-center gap-1.5 font-mono text-xs font-bold"
+              title="Scan PeerVault QR Code"
+              aria-label="Scan PeerVault QR Code"
+            >
+              <QrCode className="w-4 h-4 text-[var(--accent)] font-bold" />
+              <span className="hidden lg:inline text-[var(--text-primary)]">Scan QR</span>
+            </button>
+
             <MagneticButton>
               <Link
                 href="/send"
@@ -112,6 +128,23 @@ export function Navbar() {
               transition={{ duration: 0.25 }}
               className="md:hidden border-b border-[var(--border-color)] bg-[var(--bg-surface)] px-4 py-5 space-y-3 font-mono text-xs overflow-hidden shadow-2xl"
             >
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  soundEngine.playHoverClick();
+                  setIsScannerOpen(true);
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl border bg-[var(--bg-main)] border-[var(--border-color)] text-[var(--accent)] font-bold hover:border-[var(--accent)] transition-all cursor-pointer text-left"
+              >
+                <span className="flex items-center gap-2.5">
+                  <QrCode className="w-4 h-4 text-[var(--accent)]" weight="bold" />
+                  Scan PeerVault QR
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-[var(--success)] bg-[var(--success)]/10 px-2 py-0.5 rounded-full border border-[var(--success)]/30">
+                  Instant Pair
+                </span>
+              </button>
+
               <Link
                 href="/send"
                 onClick={() => setMobileOpen(false)}
@@ -160,6 +193,8 @@ export function Navbar() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} />
       </header>
     </>
   );

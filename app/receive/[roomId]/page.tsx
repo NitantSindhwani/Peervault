@@ -13,12 +13,14 @@ import {
   Image as ImageIcon,
   MusicNotes,
   FileText,
+  QrCode,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
 import { createDeliveryAttestation, WebAuthnAttestationResult } from '@/lib/auth/webauthn';
 import { parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
 import { MediaPlayer } from '@/components/MediaPlayer';
+import { QRScannerModal } from '@/components/QRScannerModal';
 
 export default function ReceivePage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = use(params);
@@ -28,6 +30,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [attesting, setAttesting] = useState(false);
   const [offerPayload, setOfferPayload] = useState<InstantOfferPayload | null>(null);
   const [isLoadingOffer, setIsLoadingOffer] = useState(true);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const { state, errorMsg, telemetry, receivedBlobUrl, receivedFileName, receivedSavedToDisk, startReceiver } = useTransfer({
@@ -466,6 +469,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
         </div>
       )}
 
+      <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} />
     </div>
   );
 }

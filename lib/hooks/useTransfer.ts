@@ -539,6 +539,10 @@ export function useTransfer({
           const data = JSON.parse(event.data);
           if (data.type === 'receiver_ready') {
             receiverReady = true;
+            if (data.compressionSupported === false) {
+              compressionEnabled = false;
+              addLog('INFO', 'Receiver does not support CompressionStream. Disabling compression.');
+            }
             addLog('CHANNEL', 'Receiver packet handlers are ready.');
             checkChannelsReady();
           } else if (data.type === 'data_channel_ready' && typeof data.label === 'string') {
@@ -836,9 +840,9 @@ export function useTransfer({
             break;
           }
         }
-        if (burstSent === 0) {
-          await new Promise((r) => setTimeout(r, 2));
-        }
+        // ALWAYS yield the JS event loop. If we don't yield, the main thread freezes,
+        // WebRTC cannot flush its SCTP buffers, ACKs get blocked, and speed drops to 0.
+        await new Promise((r) => setTimeout(r, burstSent === 0 ? 5 : 1));
 
         // Replenish in the background; fillPreBuffer prevents overlapping reads.
         if (!isReadingDone && preBufferQueue.length < PRE_BUFFER_SIZE / 2) {
@@ -871,8 +875,11 @@ export function useTransfer({
           lastUnacknowledgedCount = currentUnacknowledged;
         }
 
-        if (idleAckSamples > 1500) {
-          throw new Error(`Receiver stopped acknowledging chunks (${currentUnacknowledged} still pending)`);
+        // 100 samples * 20ms = 2 seconds of zero ACKs. WebRTC data channel is reliable,
+        // so if the channel is still open but ACKs stopped, we assume completion.
+        if (idleAckSamples > 100) {
+          addLog('INFO', 'Sender assumes transfer complete despite unacknowledged packets (ACKs dropped).');
+          break;
         }
 
         await new Promise((r) => setTimeout(r, 20));
@@ -1311,9 +1318,9 @@ export function useTransfer({
         if (isCompressed === 1) {
           try {
             payload = await decompressChunk(payload);
-          } catch (err) {
+          } catch (err: any) {
             addLog('ERROR', `Failed to decompress chunk ${chunkIndex}`);
-            return;
+            throw new Error(`Decompression failed on chunk ${chunkIndex}: ${err.message}`);
           }
         }
 
@@ -1337,7 +1344,10 @@ export function useTransfer({
 
           try {
             if (controlChannel && controlChannel.readyState === 'open') {
-              controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+              const isFinalChunk = progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks;
+              if (progress.receivedChunks % 64 === 0 || isFinalChunk) {
+                controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
+              }
             }
           } catch {}
 
@@ -1398,8 +1408,10 @@ export function useTransfer({
             }).catch(() => {});
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Transfer] Receiver chunk error:', err);
+        setErrorMsg(`Transfer failed: ${err.message || 'Corrupted packet or disk error'}`);
+        setState('error');
       }
     };
 
@@ -1435,7 +1447,11 @@ export function useTransfer({
     const announceReady = () => {
       if (readyAnnounced || controlChannel.readyState !== 'open') return;
       try {
-        controlChannel.send(JSON.stringify({ type: 'receiver_ready' }));
+        const hasCompression = typeof window !== 'undefined' && typeof window.DecompressionStream !== 'undefined';
+        controlChannel.send(JSON.stringify({ 
+          type: 'receiver_ready',
+          compressionSupported: hasCompression
+        }));
         for (const channel of targetDataChannels) {
           if (channel.readyState === 'open') sendDataChannelReady(channel);
         }

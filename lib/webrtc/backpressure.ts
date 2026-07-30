@@ -65,7 +65,11 @@ export class BackpressureController {
    * Process receiver ACK token
    */
   public handleAck(chunkIndex: number): void {
-    this.unacknowledged.delete(chunkIndex);
+    for (const id of this.unacknowledged) {
+      if (id <= chunkIndex) {
+        this.unacknowledged.delete(id);
+      }
+    }
     if (this.isPaused && this.unacknowledged.size < this.windowSize / 2) {
       this.setPaused(false);
     }

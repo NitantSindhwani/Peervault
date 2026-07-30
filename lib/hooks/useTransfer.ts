@@ -355,6 +355,7 @@ export function useTransfer({
     speedHistoryRef.current = [];
 
     senderStartedRef.current = true;
+    let compressionEnabled = true;
 
     const fileToStream = activeFile;
 
@@ -682,7 +683,6 @@ export function useTransfer({
       const PRE_BUFFER_SIZE = 128;
       const BURST_SIZE = 64;
       
-      let compressionEnabled = true;
       let compressionSampled = false;
 
       // Disable compression for known incompressible formats

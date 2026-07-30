@@ -484,9 +484,8 @@ export function useTransfer({
         timestamp: Date.now(),
       };
 
-      const offerHash = await createInstantOfferHash(offerPayload);
       const generatedShareUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/receive/${generatedRoomId}#offer=${offerHash}`
+        ? `${window.location.origin}/receive/${generatedRoomId}`
         : `/receive/${generatedRoomId}`;
 
       setRoomId(generatedRoomId);
@@ -984,6 +983,7 @@ export function useTransfer({
 
       if (fileName !== initialFileName || fileSize !== initialFileSize) {
         writer.setFileName(fileName);
+        setReceivedFileName(fileName);
       }
 
       if (fileSize > 0) {

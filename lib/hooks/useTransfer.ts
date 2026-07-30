@@ -120,6 +120,7 @@ export function useTransfer({
   const stagingFallbackTimerRef = useRef<any>(null);
   const receiverStartedRef = useRef<string | null>(null);
   const senderStartedRef = useRef<boolean>(false);
+  const compressionEnabledRef = useRef<boolean>(true);
   const lastAppliedAnswerRef = useRef<string | null>(null);
   const senderReadyDataLabelsRef = useRef<Set<string>>(new Set());
   const receiverStreamingRef = useRef(false);
@@ -355,7 +356,7 @@ export function useTransfer({
     speedHistoryRef.current = [];
 
     senderStartedRef.current = true;
-    let compressionEnabled = true;
+    compressionEnabledRef.current = true;
 
     const fileToStream = activeFile;
 
@@ -541,7 +542,7 @@ export function useTransfer({
           if (data.type === 'receiver_ready') {
             receiverReady = true;
             if (data.compressionSupported === false) {
-              compressionEnabled = false;
+              compressionEnabledRef.current = false;
               addLog('INFO', 'Receiver does not support CompressionStream. Disabling compression.');
             }
             addLog('CHANNEL', 'Receiver packet handlers are ready.');
@@ -697,7 +698,7 @@ export function useTransfer({
         inputFile.type === 'application/x-7z-compressed' ||
         inputFile.name.match(/\.(zip|rar|7z|gz|tar\.gz|mp4|mkv|mov|avi|mp3)$/i)
       ) {
-        compressionEnabled = false;
+        compressionEnabledRef.current = false;
         addLog('INFO', 'File type is incompressible. Auto-disabling chunk compression.');
       } else {
         addLog('INFO', 'File type appears compressible. Real-time compression enabled.');
@@ -720,22 +721,22 @@ export function useTransfer({
             let buffer = await slice.arrayBuffer();
             let isCompressed = 0;
 
-            if (compressionEnabled) {
+            if (compressionEnabledRef.current) {
               try {
                 const compressed = await compressChunk(buffer);
                 if (!compressionSampled) {
                   compressionSampled = true;
                   if (compressed.byteLength > buffer.byteLength * 0.9) {
-                    compressionEnabled = false;
+                    compressionEnabledRef.current = false;
                     addLog('INFO', 'First chunk compression ratio < 10%. Auto-disabling compression to save CPU.');
                   }
                 }
-                if (compressionEnabled && compressed.byteLength < buffer.byteLength) {
+                if (compressionEnabledRef.current && compressed.byteLength < buffer.byteLength) {
                   buffer = compressed;
                   isCompressed = 1;
                 }
               } catch (err) {
-                compressionEnabled = false;
+                compressionEnabledRef.current = false;
               }
             }
 

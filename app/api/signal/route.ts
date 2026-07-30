@@ -11,8 +11,19 @@ const globalForSignal = globalThis as unknown as {
 };
 
 const signalCache = globalForSignal.signalCache || new Map();
-
 globalForSignal.signalCache = signalCache;
+
+// Garbage Collection: Remove rooms older than 24 hours to prevent OOM
+if (!(globalForSignal as any).gcInterval) {
+  (globalForSignal as any).gcInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [roomId, state] of signalCache.entries()) {
+      if (now - state.updatedAt > 24 * 60 * 60 * 1000) {
+        signalCache.delete(roomId);
+      }
+    }
+  }, 60 * 60 * 1000); // Run every hour
+}
 
 function signalResponse(body: unknown, init?: ResponseInit) {
   return NextResponse.json(body, {

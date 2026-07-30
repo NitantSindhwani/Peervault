@@ -144,6 +144,10 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
     setHasCameraPermission(null);
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('SecureContextRequired');
+      }
+
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: { ideal: 'environment' },
@@ -176,11 +180,16 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
     } catch (err: any) {
       console.warn('[QRScanner] Camera access error:', err);
       setHasCameraPermission(false);
-      setErrorMessage(
-        err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Enable camera access in browser settings or upload a QR image below.'
-          : 'Unable to access rear camera on this device. Try uploading a QR image instead.'
-      );
+      
+      if (err.message === 'SecureContextRequired' || err.name === 'TypeError') {
+        setErrorMessage(
+          'Camera access requires a secure connection (HTTPS or localhost). Browsers block camera access on local network IPs (HTTP). Please use "Upload QR Image" instead.'
+        );
+      } else if (err.name === 'NotAllowedError') {
+        setErrorMessage('Camera permission denied. Enable camera access in browser settings or upload a QR image below.');
+      } else {
+        setErrorMessage('Unable to access rear camera on this device. Try uploading a QR image instead.');
+      }
     }
   }, [scanFrame, stopCamera]);
 

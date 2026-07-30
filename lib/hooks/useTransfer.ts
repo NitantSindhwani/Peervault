@@ -17,6 +17,7 @@ import { LocalSubnetDiscovery } from '@/lib/webrtc/local-discovery';
 import { SwarmMeshSeeder } from '@/lib/webrtc/swarm-mesh';
 
 import { WebSocketSignaler } from '@/lib/webrtc/websocket-signaling';
+import { compressChunk, decompressChunk } from '@/lib/crypto/compression';
 
 export type TransferRole = 'sender' | 'receiver';
 export type TransferState =
@@ -134,6 +135,8 @@ export function useTransfer({
   const lastByteCountRef = useRef<number>(0);
   const lastSampleTimeRef = useRef<number>(Date.now());
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectionTypeRef = useRef<string>('direct_host');
+  const statsPollerRef = useRef<any>(null);
 
   const [logs, setLogs] = useState<{ id: string; timestamp: string; category: 'ICE' | 'SIGNAL' | 'CHANNEL' | 'ERROR' | 'DATA' | 'INFO'; message: string }[]>([]);
 
@@ -150,6 +153,29 @@ export function useTransfer({
   }, []);
 
   const clearLogs = useCallback(() => setLogs([]), []);
+
+  const startConnectionStatsPoller = useCallback((pc: RTCPeerConnection) => {
+    if (statsPollerRef.current) clearInterval(statsPollerRef.current);
+    statsPollerRef.current = setInterval(async () => {
+      if (pc.signalingState === 'closed') {
+        clearInterval(statsPollerRef.current);
+        return;
+      }
+      try {
+        const stats = await pc.getStats();
+        let isRelay = false;
+        stats.forEach((report) => {
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            const local = stats.get(report.localCandidateId);
+            if (local && local.candidateType === 'relay') isRelay = true;
+            const remote = stats.get(report.remoteCandidateId);
+            if (remote && remote.candidateType === 'relay') isRelay = true;
+          }
+        });
+        connectionTypeRef.current = isRelay ? 'relay' : 'direct_host';
+      } catch (err) {}
+    }, 2000);
+  }, []);
 
   // Window error & unhandled rejection global diagnostic capturer
   useEffect(() => {
@@ -241,6 +267,7 @@ export function useTransfer({
       bbrRef.current?.stopPingLoop();
       if (signalPollerRef.current) clearInterval(signalPollerRef.current);
       if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+      if (statsPollerRef.current) clearInterval(statsPollerRef.current);
       peerChannelsRef.current?.pc.close();
     };
   }, [releaseWakeLock]);
@@ -268,6 +295,7 @@ export function useTransfer({
       telemetryIntervalRef.current = null;
     }
     if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+    if (statsPollerRef.current) clearInterval(statsPollerRef.current);
     if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
     if (peerChannelsRef.current?.pc) {
       try { peerChannelsRef.current.pc.close(); } catch {}
@@ -291,7 +319,7 @@ export function useTransfer({
       chunkIndex: 0,
       totalChunks: 0,
       bbrState: 'STARTUP',
-      connectionType: 'direct_host',
+      connectionType: connectionTypeRef.current,
       merkleRoot: null,
       etaString: '--',
       chunkSizeBytes: DATA_CHUNK_SIZE,
@@ -347,6 +375,7 @@ export function useTransfer({
 
       const channels = createSenderPeerConnection({ channelCount: DATA_CHANNEL_COUNT });
       peerChannelsRef.current = channels;
+      startConnectionStatsPoller(channels.pc);
       senderReadyDataLabelsRef.current = new Set();
 
       let hasStartedStreaming = false;
@@ -649,6 +678,28 @@ export function useTransfer({
       // once, overwhelming the JS heap and queuing data out of order.
       const PRE_BUFFER_SIZE = 128;
       const BURST_SIZE = 64;
+      
+      let compressionEnabled = true;
+      let compressionSampled = false;
+
+      // Disable compression for known incompressible formats
+      if (
+        inputFile.type.startsWith('video/') ||
+        inputFile.type.startsWith('audio/') ||
+        inputFile.type === 'image/jpeg' ||
+        inputFile.type === 'image/png' ||
+        inputFile.type === 'image/webp' ||
+        inputFile.type === 'application/zip' ||
+        inputFile.type === 'application/x-rar-compressed' ||
+        inputFile.type === 'application/x-7z-compressed' ||
+        inputFile.name.match(/\.(zip|rar|7z|gz|tar\.gz|mp4|mkv|mov|avi|mp3)$/i)
+      ) {
+        compressionEnabled = false;
+        addLog('INFO', 'File type is incompressible. Auto-disabling chunk compression.');
+      } else {
+        addLog('INFO', 'File type appears compressible. Real-time compression enabled.');
+      }
+
       const preBufferQueue: Array<{ chunkIndex: number; payloadBytes: number; packet: Uint8Array }> = [];
       let bufferOffset = 0;
       let bufferChunkIndex = 0;
@@ -663,7 +714,27 @@ export function useTransfer({
             const cIdx = bufferChunkIndex++;
             const slice = inputFile.slice(bufferOffset, bufferOffset + chunkSize);
             bufferOffset += slice.size;
-            const buffer = await slice.arrayBuffer();
+            let buffer = await slice.arrayBuffer();
+            let isCompressed = 0;
+
+            if (compressionEnabled) {
+              try {
+                const compressed = await compressChunk(buffer);
+                if (!compressionSampled) {
+                  compressionSampled = true;
+                  if (compressed.byteLength > buffer.byteLength * 0.9) {
+                    compressionEnabled = false;
+                    addLog('INFO', 'First chunk compression ratio < 10%. Auto-disabling compression to save CPU.');
+                  }
+                }
+                if (compressionEnabled && compressed.byteLength < buffer.byteLength) {
+                  buffer = compressed;
+                  isCompressed = 1;
+                }
+              } catch (err) {
+                compressionEnabled = false;
+              }
+            }
 
             // Header: index + fixed chunk size + 8 reserved bytes. The receiver
             // needs the nominal size to position the final short chunk correctly.
@@ -671,6 +742,7 @@ export function useTransfer({
             const headerView = new DataView(header);
             headerView.setUint32(0, cIdx, false);
             headerView.setUint32(4, chunkSize, false);
+            headerView.setUint8(8, isCompressed);
 
             const packet = new Uint8Array(header.byteLength + buffer.byteLength);
             packet.set(new Uint8Array(header), 0);
@@ -715,7 +787,7 @@ export function useTransfer({
             chunkIndex: currentChunkIndex,
             totalChunks: totalChunksEstimate,
             bbrState: bbr.getMetrics().state,
-            connectionType: 'direct_host',
+            connectionType: connectionTypeRef.current,
             merkleRoot: null,
             etaString: formatETA(totalSize - currentOffset, avgSpeed),
             chunkSizeBytes: chunkSize,
@@ -829,7 +901,7 @@ export function useTransfer({
         chunkIndex: totalChunksEstimate,
         totalChunks: totalChunksEstimate,
         bbrState: bbr.getMetrics().state,
-        connectionType: 'direct_host',
+        connectionType: connectionTypeRef.current,
         merkleRoot: null,
         etaString: '--:--',
         chunkSizeBytes: chunkSize,
@@ -1000,6 +1072,7 @@ export function useTransfer({
             attachChannelListener(newChannel);
           }
         );
+        startConnectionStatsPoller(pc);
 
         const pendingSenderCandidates: RTCIceCandidateInit[] = [];
 
@@ -1163,7 +1236,7 @@ export function useTransfer({
         rttMs: 0,
         chunkIndex: progress.receivedChunks,
         bbrState: 'STREAMING',
-        connectionType: 'direct_host',
+        connectionType: connectionTypeRef.current,
         merkleRoot: null,
         etaString: formatETA(progress.totalBytes - progress.bytesTransferred, averageSpeed),
         chunkSizeBytes: progress.chunkSize,
@@ -1232,7 +1305,17 @@ export function useTransfer({
         const packetView = new DataView(rawPacket);
         const chunkIndex = packetView.getUint32(0, false);
         const packetChunkSize = packetView.getUint32(4, false);
-        const payload = rawPacket.slice(16);
+        const isCompressed = packetView.getUint8(8);
+        let payload = rawPacket.slice(16);
+
+        if (isCompressed === 1) {
+          try {
+            payload = await decompressChunk(payload);
+          } catch (err) {
+            addLog('ERROR', `Failed to decompress chunk ${chunkIndex}`);
+            return;
+          }
+        }
 
         if (packetChunkSize >= 16 * 1024 && packetChunkSize <= 1024 * 1024) {
           nominalChunkSize = packetChunkSize;
@@ -1253,7 +1336,7 @@ export function useTransfer({
           progress.receivedChunks = receivedChunkSet.size;
 
           try {
-            if (progress.receivedChunks % 100 === 0 && controlChannel && controlChannel.readyState === 'open') {
+            if (controlChannel && controlChannel.readyState === 'open') {
               controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
             }
           } catch {}
@@ -1286,7 +1369,7 @@ export function useTransfer({
               rttMs: 0,
               chunkIndex: progress.totalChunks,
               bbrState: 'COMPLETE',
-              connectionType: 'direct_host',
+              connectionType: connectionTypeRef.current,
               merkleRoot: null,
               etaString: '--:--',
               chunkSizeBytes: progress.chunkSize,

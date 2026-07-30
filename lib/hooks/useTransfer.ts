@@ -989,21 +989,106 @@ export function useTransfer({
       keepAliveRef.current?.start();
       setState('negotiating');
 
-      // Retry up to 300 times (30 seconds) to fetch the offer from signaling cache if not in URL hash
+      // ---------- Offer fetch: race HTTP polling vs. real-time relay broadcast ----------
+      // The sender re-broadcasts the offer every 1.5s via BroadcastChannel, localStorage,
+      // and WebSocket.  We must listen on ALL of those channels in parallel with the HTTP
+      // poll so that whichever path delivers the offer first wins.  This fixes the
+      // serverless multi-instance problem where HTTP GET hits a different cold instance
+      // than the HTTP POST that stored the offer.
       if (!offerPayload || !offerPayload.sdp) {
-        addLog('SIGNAL', 'SDP Offer not found in URL hash. Polling signaling server...');
-        for (let attempt = 0; attempt < 300; attempt++) {
-          try {
-            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-            const data = await res.json();
-            if (data.offer && data.offer.sdp) {
-              offerPayload = data.offer;
-              addLog('SIGNAL', 'Successfully retrieved SDP Offer from signaling server');
-              break;
+        addLog('SIGNAL', 'SDP Offer not found in URL. Listening on all channels...');
+
+        offerPayload = await new Promise<any>((resolve) => {
+          let resolved = false;
+          const tryResolve = (payload: any) => {
+            if (resolved || !payload?.sdp) return;
+            resolved = true;
+            resolve(payload);
+          };
+
+          // --- Channel 1: BroadcastChannel (same-device instant) ---
+          let bc: BroadcastChannel | null = null;
+          if (typeof BroadcastChannel !== 'undefined') {
+            try {
+              bc = new BroadcastChannel(`pv_sig_bc_${cleanRoomId}`);
+              bc.onmessage = (e) => {
+                const d = e.data;
+                if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer?.sdp) {
+                  addLog('SIGNAL', 'Got SDP Offer via BroadcastChannel!');
+                  tryResolve(d.offer);
+                }
+              };
+            } catch {}
+          }
+
+          // --- Channel 2: localStorage storage events (cross-tab) ---
+          const onStorage = (e: StorageEvent) => {
+            if (e.key === `pv_sig_evt_${cleanRoomId}` && e.newValue) {
+              try {
+                const d = JSON.parse(e.newValue);
+                if (d?.action === 'submit_offer' && d?.offer?.sdp) {
+                  addLog('SIGNAL', 'Got SDP Offer via localStorage event!');
+                  tryResolve(d.offer);
+                }
+              } catch {}
             }
-          } catch {}
-          await new Promise((r) => setTimeout(r, 100));
-        }
+          };
+          window.addEventListener('storage', onStorage);
+
+          // --- Channel 3: Public WebSocket relay (cross-device) ---
+          const relayUrls = [
+            `wss://0.peerjs.com/peerjs?key=peerjs&id=pv_rx_${cleanRoomId}_${Math.random().toString(36).substring(2, 6)}`,
+            `wss://socketsbay.com/wss/v2/1/${cleanRoomId}/`,
+          ];
+          const wsRefs: WebSocket[] = [];
+          for (const url of relayUrls) {
+            try {
+              const ws = new WebSocket(url);
+              wsRefs.push(ws);
+              ws.onmessage = (e) => {
+                try {
+                  const d = JSON.parse(e.data);
+                  if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer?.sdp) {
+                    addLog('SIGNAL', 'Got SDP Offer via WebSocket relay!');
+                    tryResolve(d.offer);
+                  }
+                } catch {}
+              };
+            } catch {}
+          }
+
+          // --- Channel 4: HTTP polling (may hit different serverless instance) ---
+          let httpDone = false;
+          const httpPoll = async () => {
+            for (let attempt = 0; attempt < 300 && !resolved; attempt++) {
+              try {
+                const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.offer?.sdp) {
+                    addLog('SIGNAL', 'Got SDP Offer via HTTP signaling API!');
+                    tryResolve(data.offer);
+                    break;
+                  }
+                }
+              } catch {}
+              await new Promise((r) => setTimeout(r, 200));
+            }
+            httpDone = true;
+            // If HTTP exhausted and still no offer, resolve null so we can show an error
+            if (!resolved) tryResolve(null);
+          };
+          void httpPoll();
+
+          // Cleanup helper called after resolution
+          const cleanup = setInterval(() => {
+            if (!resolved && !httpDone) return;
+            clearInterval(cleanup);
+            window.removeEventListener('storage', onStorage);
+            for (const ws of wsRefs) { try { ws.close(); } catch {} }
+            if (bc) { try { bc.close(); } catch {} }
+          }, 500);
+        });
       }
 
       if (!offerPayload?.sdp) {

@@ -41,7 +41,9 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
 
   const [hasAccepted, setHasAccepted] = useState(false);
 
-  // Check URL offer hash or signaling offer metadata on load
+  // Check URL offer hash or signaling offer metadata on load.
+  // Races HTTP polling vs. BroadcastChannel / localStorage / WebSocket so whichever
+  // channel delivers the offer first wins — fixes the serverless multi-instance problem.
   useEffect(() => {
     let mounted = true;
     async function checkOffer() {
@@ -51,23 +53,84 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       let payload = await parseInstantOfferHash(window.location.hash);
 
       if (!payload) {
-        for (let attempt = 0; attempt < 40; attempt++) {
-          try {
-            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.offer) {
-                payload = data.offer;
-                break;
-              }
+        payload = await new Promise<any>((resolve) => {
+          let resolved = false;
+          const tryResolve = (p: any) => {
+            if (resolved || !mounted) return;
+            resolved = true;
+            resolve(p);
+          };
+
+          // BroadcastChannel
+          let bc: BroadcastChannel | null = null;
+          if (typeof BroadcastChannel !== 'undefined') {
+            try {
+              bc = new BroadcastChannel(`pv_sig_bc_${cleanRoomId}`);
+              bc.onmessage = (e) => {
+                const d = e.data;
+                if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer) {
+                  tryResolve(d.offer);
+                }
+              };
+            } catch {}
+          }
+
+          // localStorage storage events
+          const onStorage = (e: StorageEvent) => {
+            if (e.key === `pv_sig_evt_${cleanRoomId}` && e.newValue) {
+              try {
+                const d = JSON.parse(e.newValue);
+                if (d?.action === 'submit_offer' && d?.offer) tryResolve(d.offer);
+              } catch {}
             }
-          } catch {}
+          };
+          window.addEventListener('storage', onStorage);
 
-          if (payload) break;
+          // WebSocket relay
+          const wsRefs: WebSocket[] = [];
+          for (const url of [
+            `wss://0.peerjs.com/peerjs?key=peerjs&id=pv_rx_${cleanRoomId}_${Math.random().toString(36).substring(2, 6)}`,
+            `wss://socketsbay.com/wss/v2/1/${cleanRoomId}/`,
+          ]) {
+            try {
+              const ws = new WebSocket(url);
+              wsRefs.push(ws);
+              ws.onmessage = (e) => {
+                try {
+                  const d = JSON.parse(e.data);
+                  if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer) tryResolve(d.offer);
+                } catch {}
+              };
+            } catch {}
+          }
 
-          if (!mounted) return;
-          await new Promise((r) => setTimeout(r, 400));
-        }
+          // HTTP polling
+          let httpDone = false;
+          const httpPoll = async () => {
+            for (let attempt = 0; attempt < 40 && !resolved; attempt++) {
+              try {
+                const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.offer) { tryResolve(data.offer); break; }
+                }
+              } catch {}
+              if (!mounted) break;
+              await new Promise((r) => setTimeout(r, 400));
+            }
+            httpDone = true;
+            if (!resolved) tryResolve(null);
+          };
+          void httpPoll();
+
+          const cleanup = setInterval(() => {
+            if (!resolved && !httpDone) return;
+            clearInterval(cleanup);
+            window.removeEventListener('storage', onStorage);
+            for (const ws of wsRefs) { try { ws.close(); } catch {} }
+            if (bc) { try { bc.close(); } catch {} }
+          }, 500);
+        });
       }
 
       if (!mounted) return;
@@ -87,6 +150,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       mounted = false;
     };
   }, [roomId]);
+
 
   const fileSizeBytes = telemetry.totalBytes || offerPayload?.fileSize || 0;
   const requiresDirectSave = fileSizeBytes >= 128 * 1024 * 1024;

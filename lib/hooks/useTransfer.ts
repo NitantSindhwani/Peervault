@@ -59,7 +59,7 @@ export interface LiveTelemetryState {
   chunkSizeBytes: number;
 }
 
-const DATA_CHUNK_SIZE = 64 * 1024;
+const DATA_CHUNK_SIZE = 128 * 1024;  // 128 KB – optimal for WebRTC throughput
 const DATA_CHANNEL_COUNT = 8;
 const TELEMETRY_SAMPLE_MS = 200;
 
@@ -486,6 +486,8 @@ export function useTransfer({
         timestamp: Date.now(),
       };
 
+      // Use a clean short URL for the QR code and share link
+      // The receiver fetches the offer from the signaling server using the roomId
       const generatedShareUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/receive/${generatedRoomId}`
         : `/receive/${generatedRoomId}`;
@@ -493,6 +495,13 @@ export function useTransfer({
       setRoomId(generatedRoomId);
       setShareUrl(generatedShareUrl);
       setState('waiting_peer');
+      
+      // Also log actual file size now
+      addLog('INFO', `File ready: ${fileToStream.name} (${(fileToStream.size / (1024 * 1024)).toFixed(2)} MB)`);
+      setTelemetry((prev) => ({
+        ...prev,
+        totalBytes: fileToStream.size,
+      }));
 
       // Submit offer to signaling relays (Local API + Global PubSub)
       sendSignalMessage(generatedRoomId, {
@@ -512,7 +521,11 @@ export function useTransfer({
         }),
       }).catch(() => {});
 
-      // Setup DataChannel Listeners & Readiness Poller
+      // Stream starts when control + any data channel are open.
+      // We do NOT wait for receiver_ready — if that message is lost, the transfer
+      // would hang forever at "negotiating". Instead we use a generous 3-second
+      // fallback: if channels are open but receiver_ready never arrives, start anyway.
+      let readyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
       const checkChannelsReady = () => {
         if (hasStartedStreaming) return;
@@ -520,11 +533,22 @@ export function useTransfer({
         const isControlOpen = channels.controlChannel.readyState === 'open';
         const hasAnyOpenData = active.some((ch) => ch.readyState === 'open');
 
-        // Initiate stream transmission immediately once control & data channels reach open state
-        // AND the receiver has confirmed its handlers are ready (fixes 0 speed/0% bug).
-        if (isControlOpen && hasAnyOpenData && receiverReady) {
-          addLog('CHANNEL', 'DataChannels open. Initiating high-speed stream transmission...');
-          triggerStartStream();
+        if (isControlOpen && hasAnyOpenData) {
+          if (receiverReady) {
+            // Receiver confirmed it's listening — start immediately
+            addLog('CHANNEL', 'Receiver ready confirmed. Starting stream.');
+            if (readyFallbackTimer) clearTimeout(readyFallbackTimer);
+            triggerStartStream();
+          } else if (!readyFallbackTimer) {
+            // Start a 3-second grace period. If receiver_ready never arrives, start anyway.
+            addLog('CHANNEL', 'Channels open. Waiting up to 3s for receiver_ready...');
+            readyFallbackTimer = setTimeout(() => {
+              if (!hasStartedStreaming) {
+                addLog('CHANNEL', 'receiver_ready timeout — starting stream anyway.');
+                triggerStartStream();
+              }
+            }, 3000);
+          }
         }
       };
 
@@ -995,7 +1019,7 @@ export function useTransfer({
       }
 
       if (fileSize > 0) {
-        const estChunks = Math.ceil(fileSize / 262144);
+        const estChunks = Math.ceil(fileSize / DATA_CHUNK_SIZE);
         setTelemetry((prev) => ({
           ...prev,
           totalBytes: fileSize,

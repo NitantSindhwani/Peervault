@@ -443,7 +443,7 @@ export default function SendPage() {
               <div className="space-y-1 font-mono">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--success)]/10 border border-[var(--success)]/30 text-xs text-[var(--success)] font-bold mb-1">
                   <CheckCircle className="w-4 h-4" />
-                  <span>0-Second Link Generated (Zero Server Upload)</span>
+                  <span>Link Generated — Share it with your recipient</span>
                 </div>
                 <h3 className="text-2xl font-bold text-[var(--text-primary)] font-display">
                   {state === 'waiting_peer'
@@ -456,8 +456,19 @@ export default function SendPage() {
                     ? 'File Stream Successfully Completed!'
                     : `Status: ${state.toUpperCase()}`}
                 </h3>
-                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  Your file remains 100% on your device disk. <strong>Zero bytes are uploaded to any cloud server</strong>. Streaming begins the moment your recipient opens the link.
+                {/* File name + size — always visible so sender can confirm the right file */}
+                {selectedFile && (
+                  <div className="flex items-center gap-2 text-xs font-mono text-[var(--text-secondary)] pt-1">
+                    <span className="text-[var(--accent)] font-bold truncate max-w-[260px]">{selectedFile.name}</span>
+                    <span className="shrink-0 text-[var(--text-secondary)]">
+                      {selectedFile.size > 0
+                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
+                        : 'Calculating...'}
+                    </span>
+                  </div>
+                )}
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed pt-1">
+                  Your file remains 100% on your device. <strong>Zero bytes are uploaded to any cloud server</strong>. Streaming begins the moment your recipient opens the link.
                 </p>
               </div>
 
@@ -499,8 +510,8 @@ export default function SendPage() {
             {roomId && (
               <div className="md:col-span-4 flex justify-center border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6">
                 <QRCodeViewer
-                  url={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
-                  size={160}
+                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                  size={200}
                 />
               </div>
             )}

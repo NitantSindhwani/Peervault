@@ -7,9 +7,9 @@
  */
 
 export class AdaptiveChunkScaler {
-  private currentChunkSize: number = 64 * 1024 - 16; // 64KB limit for WebRTC compatibility (minus 16B header)
-  private minChunkSize: number = 16 * 1024 - 16;      // 16KB min
-  private maxChunkSize: number = 64 * 1024 - 16;     // 64KB max
+  private currentChunkSize: number = 128 * 1024 - 16; // 128KB – optimal for WebRTC throughput (minus 16B header)
+  private minChunkSize: number = 32 * 1024 - 16;      // 32KB min (fallback on congestion)
+  private maxChunkSize: number = 128 * 1024 - 16;     // 128KB max
   private stableWindowCount: number = 0;
   private lossCount: number = 0;
 

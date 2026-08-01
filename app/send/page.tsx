@@ -21,10 +21,11 @@ import {
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
-import { buildDirectoryTree, filterSelectedFiles, FileTreeNode } from '@/lib/utils/folder-walker';
+import { buildDirectoryTree, filterSelectedFiles, getAllDroppedFiles, FileTreeNode } from '@/lib/utils/folder-walker';
 import { FolderTreeViewer } from '@/components/FolderTreeViewer';
 import { archiveFilesToZip } from '@/lib/zip/zip-archiver';
 import { sfx } from '@/lib/audio/sfx';
+import { formatBytes } from '@/lib/utils/format';
 
 export default function SendPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -87,7 +88,9 @@ export default function SendPage() {
 
     resetTransfer();
 
-    if (filesArray.length === 1) {
+    const isSingleRootFile = filesArray.length === 1 && !filesArray[0].webkitRelativePath?.includes('/');
+
+    if (isSingleRootFile) {
       setSelectedFile(filesArray[0]);
       setDirectoryNodes(null);
       setRawFiles(filesArray);
@@ -96,6 +99,9 @@ export default function SendPage() {
     } else {
       // Authentic Folder / Multi-File Package Naming
       setRawFiles(filesArray);
+      setIsZipEnabled(true);
+      setShowZipModal(false);
+
       const tree = buildDirectoryTree(filesArray);
       setDirectoryNodes(tree);
 
@@ -117,7 +123,7 @@ export default function SendPage() {
       }
 
       const syntheticFile = new File([], batchName, { type: 'application/zip' });
-      Object.defineProperty(syntheticFile, 'size', { value: totalBatchSize });
+      Object.defineProperty(syntheticFile, 'size', { value: totalBatchSize, configurable: true, writable: true });
       setSelectedFile(syntheticFile);
     }
   };
@@ -128,18 +134,29 @@ export default function SendPage() {
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleBatchFileSelect(e.dataTransfer.files);
+    try {
+      const droppedFiles = await getAllDroppedFiles(e.dataTransfer);
+      if (droppedFiles.length > 0) {
+        handleBatchFileSelect(droppedFiles);
+      }
+    } catch (err) {
+      console.warn('Drag & drop traversal failed, falling back to files array:', err);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleBatchFileSelect(e.dataTransfer.files);
+      }
     }
   };
 
   const handleStartTransfer = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile && rawFiles.length === 0) return;
 
-    if (isZipEnabled && rawFiles.length > 0) {
+    const targetFileToStream = rawFiles.length === 1 ? rawFiles[0] : selectedFile;
+    const needsZipping = isZipEnabled || rawFiles.length > 1 || (rawFiles.length === 1 && Boolean(rawFiles[0].webkitRelativePath?.includes('/')));
+
+    if (needsZipping && rawFiles.length > 0 && targetFileToStream) {
       setIsZipping(true);
       setZipProgress(0);
       setZipStatusText('Preparing lossless zip archive...');
@@ -155,7 +172,7 @@ export default function SendPage() {
             setZipProgress(percent);
             setZipStatusText(text);
           },
-          selectedFile.name
+          targetFileToStream.name
         );
 
         setSelectedFile(zippedFile);
@@ -168,12 +185,13 @@ export default function SendPage() {
         setIsZipping(false);
         alert('Zip archiving failed. Falling back to direct streaming.');
         sfx.playSuccess();
-        startSender(selectedFile);
+        const fallbackFile = rawFiles[0] || targetFileToStream;
+        if (fallbackFile) startSender(fallbackFile);
       }
-    } else {
-      // 0s Delay Instant Stream Mode
+    } else if (targetFileToStream) {
+      // 0s Delay Instant Direct Stream Mode
       sfx.playSuccess();
-      startSender(selectedFile);
+      startSender(targetFileToStream);
     }
   };
 
@@ -253,7 +271,7 @@ export default function SendPage() {
                   </h3>
                   <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
                     {selectedFile
-                      ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Instant Stream`
+                      ? `${formatBytes(selectedFile.size)} • Ready for Instant Stream`
                       : 'Drop single files, multiple loose files, or whole folders'}
                   </p>
                 </div>
@@ -462,7 +480,7 @@ export default function SendPage() {
                     <span className="text-[var(--accent)] font-bold truncate max-w-[260px]">{selectedFile.name}</span>
                     <span className="shrink-0 text-[var(--text-secondary)]">
                       {selectedFile.size > 0
-                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
+                        ? formatBytes(selectedFile.size)
                         : 'Calculating...'}
                     </span>
                   </div>

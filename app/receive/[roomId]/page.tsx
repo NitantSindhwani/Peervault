@@ -21,6 +21,7 @@ import { createDeliveryAttestation, WebAuthnAttestationResult } from '@/lib/auth
 import { parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
 import { MediaPlayer } from '@/components/MediaPlayer';
 import { QRScannerModal } from '@/components/QRScannerModal';
+import { formatBytes } from '@/lib/utils/format';
 
 export default function ReceivePage({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = use(params);
@@ -248,7 +249,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
     rawName = offerPayload.fileName;
   }
   const fileName = rawName;
-  const fileSizeMb = (fileSizeBytes / (1024 * 1024)).toFixed(1);
+  const fileSizeFormatted = formatBytes(fileSizeBytes);
 
   const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(fileName);
   const isAudio = /\.(mp3|wav|ogg|m4a|flac)$/i.test(fileName);
@@ -266,7 +267,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       <div className="space-y-3">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs text-[var(--success)] font-bold">
           <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
-          <span>Direct P2P Stream • {fileSizeMb} MB</span>
+          <span>Direct P2P Stream • {fileSizeFormatted}</span>
         </div>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[var(--text-primary)] font-display break-words">
           {fileName}
@@ -356,7 +357,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                 {fileName}
               </h3>
               <p className="text-xs text-[var(--text-secondary)]">
-                Size: <strong className="text-[var(--text-primary)]">{fileSizeMb} MB</strong>
+                Size: <strong className="text-[var(--text-primary)]">{fileSizeFormatted}</strong>
               </p>
             </div>
           </div>
@@ -376,7 +377,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             className="w-full py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-xl"
           >
             <DownloadSimple className="w-5 h-5" weight="bold" />
-            <span>Accept & Receive File ({fileSizeMb} MB)</span>
+            <span>Accept & Receive File ({fileSizeFormatted})</span>
           </button>
           {acceptError && (
             <p className="text-xs text-red-400 leading-relaxed">
@@ -442,7 +443,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             {receivedSavedToDisk && (
               <div className="w-full py-3.5 rounded-xl bg-[var(--success)]/10 text-[var(--success)] font-mono text-xs sm:text-sm font-bold border border-[var(--success)]/40 flex items-center justify-center gap-2 shadow-xl">
                 <CheckCircle className="w-5 h-5" weight="fill" />
-                <span>Saved Directly to Disk Path Selected ({fileSizeMb} MB)</span>
+                <span>Saved Directly to Disk Path Selected ({fileSizeFormatted})</span>
               </div>
             )}
             
@@ -453,7 +454,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
                 className="w-full py-4 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-sm font-bold hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-xl"
               >
                 <DownloadSimple className="w-5 h-5" weight="bold" />
-                <span>Save File to Device ({fileSizeMb} MB)</span>
+                <span>Save File to Device ({fileSizeFormatted})</span>
               </a>
             )}
 

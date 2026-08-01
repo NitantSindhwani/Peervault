@@ -486,11 +486,40 @@ export function useTransfer({
         timestamp: Date.now(),
       };
 
-      // Use a clean short URL for the QR code and share link
-      // The receiver fetches the offer from the signaling server using the roomId
+      // Embed the compressed SDP offer directly into the URL hash so the receiver
+      // can get it entirely client-side — zero dependency on a shared server cache.
+      // This is the ONLY reliable method for cross-device signaling on serverless
+      // deployments where each HTTP request may hit a different process instance.
+      const offerHash = await createInstantOfferHash(offerPayload);
       const generatedShareUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/receive/${generatedRoomId}`
-        : `/receive/${generatedRoomId}`;
+        ? `${window.location.origin}/receive/${generatedRoomId}#offer=${offerHash}`
+        : `/receive/${generatedRoomId}#offer=${offerHash}`;
+
+      // Initialise the sender WebSocketSignaler NOW (before sendSignalMessage is
+      // called) so the relay broadcast goes out and so the sender can receive the
+      // receiver's SDP answer over WebSocket when HTTP-polling hits a cold instance.
+      const senderSignaler = new WebSocketSignaler(generatedRoomId, async (msg: any) => {
+        if (msg.action === 'submit_answer' && msg.answer) {
+          const ansStr = typeof msg.answer === 'string' ? msg.answer : JSON.stringify(msg.answer);
+          if (lastAppliedAnswerRef.current !== ansStr && !channels.pc.remoteDescription) {
+            lastAppliedAnswerRef.current = ansStr;
+            try {
+              const ansObj = typeof msg.answer === 'string' ? JSON.parse(msg.answer) : msg.answer;
+              await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+              addLog('SIGNAL', 'Received SDP Answer via WebSocket relay — connection live!');
+              setState('negotiating');
+            } catch (err: any) {
+              addLog('ERROR', `setRemoteDescription (ws relay): ${err.message}`);
+            }
+          }
+        } else if (msg.action === 'submit_receiver_candidate' && msg.candidate) {
+          if (channels.pc.remoteDescription) {
+            try { await channels.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
+          }
+        }
+      });
+      senderSignaler.connect();
+      wsSignalerRef.current = senderSignaler;
 
       setRoomId(generatedRoomId);
       setShareUrl(generatedShareUrl);
@@ -504,6 +533,7 @@ export function useTransfer({
       }));
 
       // Submit offer to signaling relays (Local API + Global PubSub)
+      // wsSignalerRef.current is now set, so this also broadcasts via WebSocket.
       sendSignalMessage(generatedRoomId, {
         action: 'submit_offer',
         offer: offerPayload,
@@ -1262,11 +1292,22 @@ export function useTransfer({
 
         const finalAnswer = pc.localDescription || answer;
 
-        // Submit SDP Answer to dual signaling relays
-        sendSignalMessage(cleanRoomId, {
-          action: 'submit_answer',
-          answer: finalAnswer,
-        });
+        // Submit SDP Answer — and keep re-sending every 2 s until the P2P connection
+        // establishes. A single send is silently lost when the sender's WebSocket relay
+        // hasn't opened yet or the relay drops the packet.
+        // The sender's lastAppliedAnswerRef dedup makes duplicate answers a no-op.
+        const sendAnswer = () =>
+          sendSignalMessage(cleanRoomId, { action: 'submit_answer', answer: finalAnswer });
+        sendAnswer();
+
+        const answerHeartbeat = setInterval(() => {
+          const s = pc.connectionState;
+          if (s === 'connected' || s === 'closed' || s === 'failed') {
+            clearInterval(answerHeartbeat);
+            return;
+          }
+          sendAnswer();
+        }, 2000);
 
         const processedSenderCandidates = new Set<string>();
 

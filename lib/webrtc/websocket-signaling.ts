@@ -1,27 +1,38 @@
 /**
  * PeerVault Multi-Relay Signaling Engine
- * 
- * Provides 100% reliable cross-instance real-time WebRTC signaling relay across
- * same-device tabs (BroadcastChannel & localStorage) and cross-device networks
- * (Public PeerJS / WebSockets).
+ *
+ * Connects to ALL relay channels simultaneously (not sequentially) so that
+ * the first working channel delivers the message immediately.
+ *
+ * Same-device: BroadcastChannel < 0.1ms, localStorage < 1ms
+ * Cross-device: socketsbay.com room broadcast (auto-reconnect on drop)
  */
 
 export class WebSocketSignaler {
-  private ws: WebSocket | null = null;
+  private sockets: WebSocket[] = [];
   private bc: BroadcastChannel | null = null;
   private roomId: string;
   private onMessageCallback: (data: any) => void;
   private isClosed: boolean = false;
+  private storageHandler: ((e: StorageEvent) => void) | null = null;
+
+  // All public relay URLs that broadcast to all clients sharing the same room path.
+  // We intentionally exclude PeerJS here — PeerJS routes by peer ID, NOT by room,
+  // so two clients with different peer IDs never receive each other's messages.
+  private readonly RELAY_URLS: string[];
 
   constructor(roomId: string, onMessage: (data: any) => void) {
     this.roomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
     this.onMessageCallback = onMessage;
+    this.RELAY_URLS = [
+      `wss://socketsbay.com/wss/v2/1/${this.roomId}/`,
+    ];
   }
 
   public connect(): void {
     if (this.isClosed) return;
 
-    // 1. Same-Device / Cross-Tab Instant Signaling via BroadcastChannel (< 0.1ms)
+    // 1. Same-device / cross-tab: BroadcastChannel (< 0.1ms)
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.bc = new BroadcastChannel(`pv_sig_bc_${this.roomId}`);
@@ -33,9 +44,9 @@ export class WebSocketSignaler {
       } catch {}
     }
 
-    // 2. Same-Device Cross-Tab Backup via Storage Events (< 1ms)
+    // 2. Same-device / cross-tab: localStorage storage events (< 1ms)
     if (typeof window !== 'undefined') {
-      window.addEventListener('storage', (event) => {
+      this.storageHandler = (event: StorageEvent) => {
         if (event.key === `pv_sig_evt_${this.roomId}` && event.newValue) {
           try {
             const data = JSON.parse(event.newValue);
@@ -44,95 +55,90 @@ export class WebSocketSignaler {
             }
           } catch {}
         }
-      });
+      };
+      window.addEventListener('storage', this.storageHandler);
     }
 
-    // 3. Multi-Relay Public WebSockets for Cross-Device / Mobile Sharing
-    const relays = [
-      `wss://0.peerjs.com/peerjs?key=peerjs&id=pv_rel_${this.roomId}_${Math.random().toString(36).substring(2, 6)}`,
-      `wss://free.v2fly.org/ws?room=${this.roomId}`,
-      `wss://socketsbay.com/wss/v2/1/${this.roomId}/`,
-    ];
+    // 3. Cross-device: connect to ALL WebSocket room-broadcast relays simultaneously.
+    // Each relay auto-reconnects with exponential backoff if it drops.
+    for (const url of this.RELAY_URLS) {
+      this.connectToRelay(url, 0);
+    }
+  }
 
-    let currentRelayIndex = 0;
+  private connectToRelay(url: string, attempt: number): void {
+    if (this.isClosed) return;
+    try {
+      const ws = new WebSocket(url);
+      this.sockets.push(ws);
 
-    const tryNextRelay = () => {
-      if (this.isClosed || currentRelayIndex >= relays.length) return;
-      const url = relays[currentRelayIndex++];
+      ws.onopen = () => {
+        console.log(`[Signaler] Connected: ${url}`);
+      };
 
-      try {
-        const ws = new WebSocket(url);
-        this.ws = ws;
-
-        ws.onopen = () => {
-          console.log('[Signaler] WebSocket signaling connected via:', url);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data && data.roomId === this.roomId) {
-              this.onMessageCallback(data);
-            }
-          } catch {}
-        };
-
-        ws.onerror = () => {
-          ws.close();
-          tryNextRelay();
-        };
-
-        ws.onclose = () => {
-          if (!this.isClosed && currentRelayIndex < relays.length) {
-            tryNextRelay();
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.roomId === this.roomId) {
+            this.onMessageCallback(data);
           }
-        };
-      } catch {
-        tryNextRelay();
-      }
-    };
+        } catch {}
+      };
 
-    tryNextRelay();
+      ws.onerror = () => {
+        // Silently ignore — onclose will handle cleanup + retry
+      };
+
+      ws.onclose = () => {
+        const idx = this.sockets.indexOf(ws);
+        if (idx >= 0) this.sockets.splice(idx, 1);
+
+        // Exponential backoff reconnect (max 30s between attempts, max 10 attempts)
+        if (!this.isClosed && attempt < 10) {
+          const delay = Math.min(30000, 1000 * Math.pow(1.5, attempt));
+          setTimeout(() => this.connectToRelay(url, attempt + 1), delay);
+        }
+      };
+    } catch {}
   }
 
   public send(payload: any): void {
     const fullMessage = { roomId: this.roomId, ...payload, ts: Date.now() };
 
-    // Broadcast over BroadcastChannel
+    // BroadcastChannel (same-device)
     if (this.bc) {
-      try {
-        this.bc.postMessage(fullMessage);
-      } catch {}
+      try { this.bc.postMessage(fullMessage); } catch {}
     }
 
-    // Broadcast over localStorage event
+    // localStorage storage event (same-device cross-tab)
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(`pv_sig_evt_${this.roomId}`, JSON.stringify(fullMessage));
       } catch {}
     }
 
-    // Broadcast over WebSocket
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      try {
-        this.ws.send(JSON.stringify(fullMessage));
-      } catch {}
+    // All WebSocket relays (cross-device)
+    const msg = JSON.stringify(fullMessage);
+    for (const ws of this.sockets) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try { ws.send(msg); } catch {}
+      }
     }
   }
 
   public close(): void {
     this.isClosed = true;
     if (this.bc) {
-      try {
-        this.bc.close();
-      } catch {}
+      try { this.bc.close(); } catch {}
       this.bc = null;
     }
-    if (this.ws) {
-      try {
-        this.ws.close();
-      } catch {}
-      this.ws = null;
+    if (this.storageHandler && typeof window !== 'undefined') {
+      window.removeEventListener('storage', this.storageHandler);
+      this.storageHandler = null;
     }
+    for (const ws of this.sockets) {
+      try { ws.close(); } catch {}
+    }
+    this.sockets = [];
   }
 }

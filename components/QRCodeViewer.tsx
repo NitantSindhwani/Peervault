@@ -8,7 +8,7 @@ export interface QRCodeViewerProps {
   size?: number;
 }
 
-export function QRCodeViewer({ url, size = 200 }: QRCodeViewerProps) {
+export function QRCodeViewer({ url, size = 260 }: QRCodeViewerProps) {
   // If running on localhost, swap to LAN IP so a phone on the same Wi-Fi
   // can actually reach the dev server.
   let scannableUrl = url;
@@ -34,7 +34,7 @@ export function QRCodeViewer({ url, size = 200 }: QRCodeViewerProps) {
           <QRCodeSVG
             value={scannableUrl}
             size={size}
-            level="H"
+            level="M"
             includeMargin={false}
             bgColor="#FFFFFF"
             fgColor="#0D0F14"

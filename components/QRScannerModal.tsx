@@ -350,23 +350,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
       if (activeTab === 'camera') {
-        if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
-          navigator.permissions
-            .query({ name: 'camera' as any })
-            .then((status) => {
-              if (status.state === 'denied') {
-                setHasCameraPermission(false);
-                setErrorMessage('Camera permission is blocked. Tap "Allow Camera Access" or check browser settings.');
-              } else {
-                startCamera();
-              }
-            })
-            .catch(() => {
-              startCamera();
-            });
-        } else {
-          startCamera();
-        }
+        startCamera();
       }
     } else {
       stopCamera();
@@ -453,12 +437,12 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xl p-4 sm:p-6 animate-fade-in font-mono cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 sm:p-6 overflow-y-auto animate-fade-in font-mono cursor-pointer"
     >
       {/* Modal Dialog Card */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-3xl overflow-hidden shadow-2xl flex flex-col glow-amber cursor-default"
+        className="relative w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-2xl flex flex-col glow-amber cursor-default my-auto"
       >
         
         {/* Header Bar */}
@@ -510,11 +494,11 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
                 stopCamera();
                 onClose();
               }}
-              className="p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-400 transition-colors cursor-pointer flex items-center justify-center"
+              className="w-9 h-9 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all flex items-center justify-center cursor-pointer shadow-sm shrink-0"
               aria-label="Close Scanner"
               title="Close Modal (Esc)"
             >
-              <X className="w-4.5 h-4.5 font-bold" />
+              <X className="w-4 h-4" weight="bold" />
             </button>
           </div>
         </div>
@@ -698,7 +682,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
         )}
 
         {/* Footer Actions */}
-        <div className="p-4 bg-[var(--bg-main)] border-t border-[var(--border-color)] space-y-3">
+        <div className="p-4 bg-[var(--bg-main)] border-t border-[var(--border-color)]">
           <input
             ref={fileInputRef}
             type="file"
@@ -707,26 +691,13 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
             className="hidden"
           />
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex-1 py-3 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow"
-            >
-              <ImageIcon className="w-4 h-4 text-[var(--accent)]" weight="bold" />
-              <span>Upload QR Image</span>
-            </button>
-
-            <button
-              onClick={() => {
-                stopCamera();
-                onClose();
-              }}
-              className="py-3 px-4 rounded-xl bg-[var(--bg-surface)] border border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow"
-            >
-              <X className="w-4 h-4" weight="bold" />
-              <span>Close</span>
-            </button>
-          </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-3 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/5 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+          >
+            <ImageIcon className="w-4.5 h-4.5 text-[var(--accent)]" weight="bold" />
+            <span>Upload QR Image File</span>
+          </button>
         </div>
 
       </div>

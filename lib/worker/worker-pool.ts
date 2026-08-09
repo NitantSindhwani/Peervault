@@ -110,11 +110,22 @@ export class WorkerPool {
     const worker = this.workers[this.currentWorkerIndex];
     this.currentWorkerIndex = (this.currentWorkerIndex + 1) % this.workers.length;
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       this.pendingTasks.set(id, { resolve, reject });
       const bufferCopy = task.buffer.slice(0);
-      const request: WorkerTaskRequest = { ...task, buffer: bufferCopy, id };
-      worker.postMessage(request, [bufferCopy]);
+      const transferables: ArrayBuffer[] = [bufferCopy];
+      const postData: any = { id, type: task.type, buffer: bufferCopy, iv: task.iv, mimeType: task.mimeType };
+      // Export CryptoKey to raw ArrayBuffer for worker (CryptoKey is non-transferable)
+      if (task.key) {
+        try {
+          const rawKey = await crypto.subtle.exportKey('raw', task.key);
+          postData.rawKey = rawKey;
+          transferables.push(rawKey);
+        } catch {
+          postData.rawKey = undefined;
+        }
+      }
+      worker.postMessage(postData, transferables);
     });
   }
 

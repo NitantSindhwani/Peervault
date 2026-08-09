@@ -332,6 +332,10 @@ export function useTransfer({
    */
   const startSender = useCallback(async (customFile?: File) => {
     const activeFile = customFile || file;
+    if (senderStartedRef.current && peerChannelsRef.current?.pc?.connectionState !== 'closed') {
+      console.warn('[Transfer] startSender already active, ignoring duplicate call.');
+      return;
+    }
     if (!activeFile) {
       setErrorMsg('No file selected for transfer');
       setState('error');
@@ -405,32 +409,6 @@ export function useTransfer({
         }
       };
 
-      const signaler = new WebSocketSignaler(generatedRoomId, async (msg) => {
-        if (msg.action === 'submit_answer' && msg.answer) {
-          const ansStr = typeof msg.answer === 'string' ? msg.answer : JSON.stringify(msg.answer);
-          if (lastAppliedAnswerRef.current !== ansStr) {
-            lastAppliedAnswerRef.current = ansStr;
-            try {
-              const ansObj = typeof msg.answer === 'string' ? JSON.parse(msg.answer) : msg.answer;
-              await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
-              addLog('SIGNAL', 'Applied recipient SDP Answer via WebSocket!');
-              setState('negotiating');
-              
-              // Flush buffered candidates
-              for (const cand of pendingReceiverCandidates) {
-                try {
-                  await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch {}
-              }
-              pendingReceiverCandidates.length = 0;
-            } catch {}
-          }
-        } else if (msg.action === 'submit_receiver_candidate' && msg.candidate) {
-          await processReceiverCandidate(msg.candidate);
-        }
-      });
-      signaler.connect();
-      wsSignalerRef.current = signaler;
 
       channels.pc.onconnectionstatechange = () => {
         addLog('CHANNEL', `Sender connection state: ${channels.pc.connectionState}`);
@@ -508,14 +486,17 @@ export function useTransfer({
               await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
               addLog('SIGNAL', 'Received SDP Answer via WebSocket relay — connection live!');
               setState('negotiating');
+              // Flush any ICE candidates that arrived before the answer
+              for (const cand of pendingReceiverCandidates) {
+                try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+              }
+              pendingReceiverCandidates.length = 0;
             } catch (err: any) {
               addLog('ERROR', `setRemoteDescription (ws relay): ${err.message}`);
             }
           }
         } else if (msg.action === 'submit_receiver_candidate' && msg.candidate) {
-          if (channels.pc.remoteDescription) {
-            try { await channels.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
-          }
+          await processReceiverCandidate(msg.candidate);
         }
       });
       senderSignaler.connect();
@@ -641,20 +622,23 @@ export function useTransfer({
                   await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
                   addLog('SIGNAL', 'Successfully set remote description from recipient SDP Answer');
                   setState('negotiating');
+                  // Flush any ICE candidates that arrived before the answer
+                  for (const cand of pendingReceiverCandidates) {
+                    try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+                  }
+                  pendingReceiverCandidates.length = 0;
                 } catch (err: any) {
                   addLog('ERROR', `setRemoteDescription answer error: ${err.message}`);
                 }
               }
             }
 
-            if (channels.pc.remoteDescription && data.receiverCandidates && data.receiverCandidates.length > 0) {
+            if (data.receiverCandidates && data.receiverCandidates.length > 0) {
               for (const cand of data.receiverCandidates) {
                 const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
                 if (!processedReceiverCandidates.has(key)) {
                   processedReceiverCandidates.add(key);
-                  try {
-                    await channels.pc.addIceCandidate(new RTCIceCandidate(cand));
-                  } catch {}
+                  await processReceiverCandidate(cand);
                 }
               }
             }
@@ -708,17 +692,25 @@ export function useTransfer({
     const totalChunksEstimate = Math.ceil(totalSize / chunkSize);
 
     // Transmit fixed protocol parameters before the first data packet.
-    try {
-      if (channels.controlChannel.readyState === 'open') {
-        channels.controlChannel.send(JSON.stringify({
-          type: 'metadata',
-          fileName: inputFile.name,
-          fileSize: totalSize,
-          mimeType: inputFile.type,
-          chunkSize,
-        }));
-      }
-    } catch {}
+    const metadataMsg = JSON.stringify({
+      type: 'metadata',
+      fileName: inputFile.name,
+      fileSize: totalSize,
+      mimeType: inputFile.type,
+      chunkSize,
+    });
+    let metadataSent = false;
+    for (let metaAttempt = 0; metaAttempt < 5 && !metadataSent; metaAttempt++) {
+      try {
+        if (channels.controlChannel.readyState === 'open') {
+          channels.controlChannel.send(metadataMsg);
+          metadataSent = true;
+          addLog('INFO', 'File metadata sent to receiver.');
+        }
+      } catch {}
+      if (!metadataSent) await new Promise(r => setTimeout(r, 200));
+    }
+    if (!metadataSent) addLog('ERROR', 'Failed to send metadata after 5 attempts.');
 
     lastByteCountRef.current = 0;
     lastSampleTimeRef.current = Date.now();
@@ -805,7 +797,7 @@ export function useTransfer({
             const packet = new Uint8Array(header.byteLength + buffer.byteLength);
             packet.set(new Uint8Array(header), 0);
             packet.set(new Uint8Array(buffer), 16);
-            preBufferQueue.push({ chunkIndex: cIdx, payloadBytes: buffer.byteLength, packet });
+            preBufferQueue.push({ chunkIndex: cIdx, payloadBytes: slice.size, packet });
           }
           if (bufferOffset >= totalSize) isReadingDone = true;
         })().finally(() => {
@@ -826,6 +818,7 @@ export function useTransfer({
           const currentOffset = senderProgress.offset;
           const currentChunkIndex = senderProgress.chunkIndex;
           const bytesDiff = Math.max(0, currentOffset - lastByteCountRef.current);
+          if (bytesDiff === 0 && timeDiff < 1.0) return;
           const currentSpeed = bytesDiff / timeDiff;
           lastByteCountRef.current = currentOffset;
           lastSampleTimeRef.current = now;
@@ -860,6 +853,10 @@ export function useTransfer({
 
         const openChannels = activeChannels.filter((ch) => ch.readyState === 'open');
         if (openChannels.length === 0) {
+          const pcState = channels.pc.connectionState;
+          if (pcState === 'failed' || pcState === 'closed' || pcState === 'disconnected') {
+            throw new Error(`WebRTC connection ${pcState} — aborting transfer.`);
+          }
           await new Promise((r) => setTimeout(r, 2));
           continue;
         }
@@ -969,7 +966,6 @@ export function useTransfer({
       });
 
       if (roomId) removeResumeSession(roomId);
-      setState('verifying');
       setState('complete');
     } catch (err: any) {
       console.error('[Transfer] Streaming error:', err);
@@ -1434,6 +1430,13 @@ export function useTransfer({
             try {
               controlChannel.send(JSON.stringify({ type: 'bbr_pong', ts: msg.ts }));
             } catch {}
+          } else if (msg.type === 'transfer_complete') {
+            addLog('CHANNEL', 'Sender confirmed transfer_complete.');
+            if (msg.fileSize && msg.fileSize > 0) actualFileSize = msg.fileSize;
+            if (Number.isInteger(msg.totalChunks) && msg.totalChunks > 0) {
+              nominalChunkSize = actualFileSize > 0 && msg.totalChunks > 0 ? Math.ceil(actualFileSize / msg.totalChunks) : nominalChunkSize;
+            }
+            syncExpectedTotals();
           }
         } catch {}
       };
@@ -1509,14 +1512,14 @@ export function useTransfer({
               fileName: actualFileName,
               fileSize: progress.totalBytes,
               totalChunks: progress.totalChunks,
-              completedChunksBitmap: [chunkIndex],
+              completedChunksBitmap: Array.from(receivedChunkSet),
               bytesTransferred: progress.bytesTransferred,
               updatedAt: Date.now(),
             });
           }
 
-          const isFullyReceived = progress.totalBytes > 0
-            && (progress.bytesTransferred >= progress.totalBytes || (progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks));
+          const isFullyReceived = (progress.totalBytes === 0 && receivedChunkSet.size === 0 && actualFileSize === 0) || (progress.totalBytes > 0
+            && (progress.bytesTransferred >= progress.totalBytes || (progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks)));
           if (isFullyReceived && !isFinalizingRef.current) {
             isFinalizingRef.current = true;
             if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);

@@ -15,6 +15,7 @@ export async function archiveFilesToZip(
   onProgress?: ZipProgressCallback,
   customZipName?: string
 ): Promise<File> {
+  if (!files || files.length === 0) throw new Error('No files provided for archiving.');
   const zip = new JSZip();
 
   for (let i = 0; i < files.length; i++) {
@@ -27,8 +28,7 @@ export async function archiveFilesToZip(
       onProgress(stepPercent, `Reading ${file.name}...`);
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    zip.file(relativePath, arrayBuffer);
+    zip.file(relativePath, file);
   }
 
   // Generate lossless ZIP Blob with DEFLATE compression level 6
@@ -52,7 +52,7 @@ export async function archiveFilesToZip(
     if (relativePath && relativePath.includes('/')) {
       zipFileName = `${relativePath.split('/')[0]}.zip`;
     } else {
-      const firstName = files[0]?.name.replace(/\.[^/.]+$/, '') || 'archive';
+      const firstName = files[0]?.name?.replace(/\.[^/.]+$/, '') || 'archive';
       zipFileName = files.length === 1 
         ? `${firstName}.zip` 
         : `${firstName}_and_${files.length - 1}_other_files.zip`;

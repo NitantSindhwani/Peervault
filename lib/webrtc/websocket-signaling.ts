@@ -15,6 +15,7 @@ export class WebSocketSignaler {
   private onMessageCallback: (data: any) => void;
   private isClosed: boolean = false;
   private storageHandler: ((e: StorageEvent) => void) | null = null;
+  private relayAttempts = new Map<string, number>();
 
   // All public relay URLs that broadcast to all clients sharing the same room path.
   // We intentionally exclude PeerJS here — PeerJS routes by peer ID, NOT by room,
@@ -62,18 +63,20 @@ export class WebSocketSignaler {
     // 3. Cross-device: connect to ALL WebSocket room-broadcast relays simultaneously.
     // Each relay auto-reconnects with exponential backoff if it drops.
     for (const url of this.RELAY_URLS) {
-      this.connectToRelay(url, 0);
+      this.connectToRelay(url);
     }
   }
 
-  private connectToRelay(url: string, attempt: number): void {
+  private connectToRelay(url: string): void {
     if (this.isClosed) return;
+    const attempt = this.relayAttempts.get(url) || 0;
     try {
       const ws = new WebSocket(url);
       this.sockets.push(ws);
 
       ws.onopen = () => {
         console.log(`[Signaler] Connected: ${url}`);
+        this.relayAttempts.set(url, 0);
       };
 
       ws.onmessage = (event) => {
@@ -96,7 +99,8 @@ export class WebSocketSignaler {
         // Exponential backoff reconnect (max 30s between attempts, max 10 attempts)
         if (!this.isClosed && attempt < 10) {
           const delay = Math.min(30000, 1000 * Math.pow(1.5, attempt));
-          setTimeout(() => this.connectToRelay(url, attempt + 1), delay);
+          this.relayAttempts.set(url, attempt + 1);
+          setTimeout(() => this.connectToRelay(url), delay);
         }
       };
     } catch {}

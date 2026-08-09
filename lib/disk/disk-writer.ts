@@ -38,6 +38,7 @@ export class DiskWriter {
   private mimeType: string;
   private totalSize: number;
   private writtenSize: number = 0;
+  private writtenChunkSet = new Set<number>();
   private streamId: string;
   private tier: DiskWriterTier = 'indexeddb_paging';
   // Key by protocol chunk index, never by a chunk's own byte length. The last
@@ -155,8 +156,8 @@ export class DiskWriter {
    * Write a chunk to storage (Direct FS, IndexedDB Paging, or Memory)
    */
   public async writeChunk(chunk: ArrayBuffer, offset: number, explicitChunkIndex?: number): Promise<void> {
-    const chunkSize = chunk.byteLength || 262144;
-    const chunkIndex = explicitChunkIndex !== undefined ? explicitChunkIndex : Math.floor(offset / Math.max(1, chunkSize));
+    const NOMINAL_CHUNK_SIZE = 131072; // 128KB — must match DATA_CHUNK_SIZE in useTransfer
+    const chunkIndex = explicitChunkIndex !== undefined ? explicitChunkIndex : Math.floor(offset / NOMINAL_CHUNK_SIZE);
 
     // Direct File System Access API streaming for massive 10GB–100GB files
     if (this.writableStream) {
@@ -181,7 +182,10 @@ export class DiskWriter {
           chunkIndex,
           data: chunk.slice(0),
         });
-        this.writtenSize += chunk.byteLength;
+        if (!this.writtenChunkSet.has(chunkIndex)) {
+          this.writtenSize += chunk.byteLength;
+          this.writtenChunkSet.add(chunkIndex);
+        }
 
         // Flush batch of 32 chunks per transaction
         if (this.pendingWriteBuffer.length >= 32) {

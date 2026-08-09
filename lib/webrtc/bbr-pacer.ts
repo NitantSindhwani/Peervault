@@ -110,8 +110,11 @@ export class BBRPacer {
    * Compute delay in milliseconds before sending next chunk
    */
   public getPacingDelayMs(chunkSizeBytes: number): number {
-    // 0ms delay for maximum direct P2P throughput; backpressure handles buffer bounds
-    return 0;
+    if (this.maxDeliveryRate <= 0 || this.pacingGain <= 0) return 0;
+    const pacingRateBytesPerSec = this.maxDeliveryRate * this.pacingGain * 1000;
+    if (pacingRateBytesPerSec <= 0) return 0;
+    const delay = (chunkSizeBytes / pacingRateBytesPerSec) * 1000;
+    return Math.max(0, Math.min(delay, 50)); // Cap at 50ms to avoid stalling
   }
 
   /**

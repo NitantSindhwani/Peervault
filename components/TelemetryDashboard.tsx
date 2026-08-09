@@ -61,7 +61,7 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
 
           const chunkIdx = liveData.chunkIndex ?? prev.chunkIndex;
           const totalChks = liveData.totalChunks ?? prev.totalChunks;
-          const verified = typeof liveData.merkleVerifiedCount === 'number' && liveData.merkleVerifiedCount > 0
+          const verified = typeof liveData.merkleVerifiedCount === 'number'
             ? liveData.merkleVerifiedCount
             : (liveData.chunkIndex || prev.chunkIndex || 0);
           const currentMemory = getRealMemoryMb();

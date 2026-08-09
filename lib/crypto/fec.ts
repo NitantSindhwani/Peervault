@@ -103,16 +103,25 @@ export class ForwardErrorCorrection {
 
     if (missingIndices.length === 1 && parityMap.size > 0) {
       const missingIndex = missingIndices[0];
-      const parityData = Array.from(parityMap.values())[0];
+      const parityEntry = Array.from(parityMap.entries())[0];
+      const parityIdx = parityEntry[0];
+      const parityData = parityEntry[1];
+      const p = parityIdx - expectedDataChunks; // Which parity block (0-based)
       const chunkSize = parityData.length;
       const recoveredData = new Uint8Array(chunkSize);
       recoveredData.set(parityData);
 
+      // XOR out all received data chunks
       for (const [idx, data] of dataMap.entries()) {
-        const weight = (1) * (idx + 1);
+        const weight = (p + 1) * (idx + 1);
         for (let j = 0; j < chunkSize; j++) {
           recoveredData[j] ^= (data[j] || 0) ^ (weight % 256);
         }
+      }
+      // XOR out the missing chunk's own weight contribution
+      const missingWeight = (p + 1) * (missingIndex + 1);
+      for (let j = 0; j < chunkSize; j++) {
+        recoveredData[j] ^= (missingWeight % 256);
       }
 
       dataMap.set(missingIndex, recoveredData);

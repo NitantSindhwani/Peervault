@@ -72,6 +72,10 @@ export class KeepAliveManager {
   private handleVisibilityChange = async () => {
     if (document.visibilityState === 'visible' && this.isKeepAliveActive) {
       try {
+        if (this.wakeLock) {
+          try { await this.wakeLock.release(); } catch {}
+          this.wakeLock = null;
+        }
         if ('wakeLock' in navigator && (navigator as any).wakeLock) {
           this.wakeLock = await (navigator as any).wakeLock.request('screen');
         }

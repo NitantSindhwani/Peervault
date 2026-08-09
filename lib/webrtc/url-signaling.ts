@@ -97,7 +97,7 @@ export async function parseInstantOfferHash(hashStr: string): Promise<InstantOff
       try {
         const stream = new DecompressionStream('gzip');
         const writer = stream.writable.getWriter();
-        writer.write(bytes.buffer as ArrayBuffer);
+        writer.write(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
         writer.close();
 
         const buffer = await new Response(stream.readable).arrayBuffer();

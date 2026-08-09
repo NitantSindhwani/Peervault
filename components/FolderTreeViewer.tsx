@@ -99,7 +99,13 @@ export function FolderTreeViewer({ nodes, onSelectionChange }: FolderTreeViewerP
           }
           const matchesQuery = item.name.toLowerCase().includes(searchQuery.toLowerCase());
           const matchesCat = matchesCategory(item.name);
-          if (matchesQuery && matchesCat) return item;
+          if (matchesQuery && matchesCat) {
+            if (item.children) {
+              const filteredChildren = filterNodes(item.children);
+              return { ...item, children: filteredChildren };
+            }
+            return item;
+          }
           return null;
         })
         .filter(Boolean) as FileTreeNode[];

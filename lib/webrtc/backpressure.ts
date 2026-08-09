@@ -46,8 +46,13 @@ export class BackpressureController {
       if (!this.isPaused) this.setPaused(true);
       return false;
     }
+    // Application-level window: stop sender from overwhelming slow receiver disk I/O
+    if (this.unacknowledged.size >= this.windowSize) {
+      if (!this.isPaused) this.setPaused(true);
+      return false;
+    }
 
-    if (dataChannel.bufferedAmount <= this.minBufferedAmount && this.isPaused) {
+    if (dataChannel.bufferedAmount <= this.minBufferedAmount && this.isPaused && this.unacknowledged.size < this.windowSize) {
       this.setPaused(false);
     }
 

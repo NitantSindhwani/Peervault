@@ -75,9 +75,13 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
         e.preventDefault();
         toggleMute();
       } else if (e.code === 'ArrowRight' && mediaRef.current) {
-        mediaRef.current.currentTime = Math.min(mediaRef.current.duration, mediaRef.current.currentTime + 5);
+        try {
+          mediaRef.current.currentTime = Math.min(mediaRef.current.duration, mediaRef.current.currentTime + 5);
+        } catch {}
       } else if (e.code === 'ArrowLeft' && mediaRef.current) {
-        mediaRef.current.currentTime = Math.max(0, mediaRef.current.currentTime - 5);
+        try {
+          mediaRef.current.currentTime = Math.max(0, mediaRef.current.currentTime - 5);
+        } catch {}
       }
     };
 
@@ -113,7 +117,13 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     setCurrentTime(time);
-    if (mediaRef.current) mediaRef.current.currentTime = time;
+    if (mediaRef.current) {
+      try {
+        mediaRef.current.currentTime = time;
+      } catch {
+        // Seek target not buffered yet
+      }
+    }
   };
 
   const handleSpeedChange = (speed: number) => {

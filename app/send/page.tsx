@@ -154,7 +154,7 @@ export default function SendPage() {
     if (!selectedFile && rawFiles.length === 0) return;
 
     const targetFileToStream = rawFiles.length === 1 ? rawFiles[0] : selectedFile;
-    const needsZipping = isZipEnabled || rawFiles.length > 1 || (rawFiles.length === 1 && Boolean(rawFiles[0].webkitRelativePath?.includes('/')));
+    const needsZipping = isZipEnabled && (rawFiles.length > 1 || (rawFiles.length === 1 && Boolean(rawFiles[0].webkitRelativePath?.includes('/'))));
 
     if (needsZipping && rawFiles.length > 0 && targetFileToStream) {
       setIsZipping(true);
@@ -179,19 +179,19 @@ export default function SendPage() {
         setIsZipping(false);
 
         sfx.playSuccess();
-        startSender(zippedFile);
+        void startSender(zippedFile);
       } catch (err) {
         console.error('Zip archiving failure:', err);
         setIsZipping(false);
         alert('Zip archiving failed. Falling back to direct streaming.');
         sfx.playSuccess();
         const fallbackFile = rawFiles[0] || targetFileToStream;
-        if (fallbackFile) startSender(fallbackFile);
+        if (fallbackFile) void startSender(fallbackFile);
       }
     } else if (targetFileToStream) {
       // 0s Delay Instant Direct Stream Mode
       sfx.playSuccess();
-      startSender(targetFileToStream);
+      void startSender(targetFileToStream);
     }
   };
 
@@ -501,7 +501,7 @@ export default function SendPage() {
                     name="shareLinkUrl"
                     type="text"
                     readOnly
-                    value={roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : ''}
+                    value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
                     className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)] cursor-pointer tracking-wide"
                   />
                   <div className="flex items-center gap-2">
@@ -528,7 +528,7 @@ export default function SendPage() {
             {roomId && (
               <div className="md:col-span-4 flex justify-center border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6">
                 <QRCodeViewer
-                  url={`${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                  url={shareUrl || `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
                   size={200}
                 />
               </div>

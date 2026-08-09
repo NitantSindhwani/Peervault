@@ -187,7 +187,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       const fileHandle = await requestDirectSaveHandle();
       setIsUnlocked(true);
       setHasAccepted(true);
-      startReceiver(roomId, fileHandle);
+      await startReceiver(roomId, fileHandle);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       setAcceptError(err?.message || 'Could not start receiver');
@@ -223,7 +223,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
       file_size_bytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
       merkle_root_blake3: realHash,
       completed_at: new Date().toISOString(),
-      server_signature_ed25519: 'sig_ed25519_peervault_master_signed_9981a',
+      server_signature_ed25519: null, // Server-side signing not yet implemented
       webauthn_biometric_attestation: attestation
         ? {
             credential_id: attestation.credentialId,

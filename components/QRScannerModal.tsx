@@ -391,11 +391,13 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        const MAX_SCAN_DIM = 1024;
+        const scale = Math.min(1, MAX_SCAN_DIM / Math.max(img.width, img.height));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
             inversionAttempts: 'attemptBoth',

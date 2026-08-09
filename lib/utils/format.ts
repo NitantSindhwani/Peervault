@@ -3,7 +3,7 @@
  */
 
 export function formatBytes(bytes: number, decimals: number = 2): string {
-  if (bytes === 0) return '0 Bytes';
+  if (!bytes || bytes <= 0 || !isFinite(bytes)) return '0 B';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
@@ -22,7 +22,7 @@ export function formatSpeed(bytesPerSec: number): string {
 }
 
 export function formatETA(remainingBytes: number, speedBytesPerSec: number): string {
-  if (!speedBytesPerSec || speedBytesPerSec <= 0 || !remainingBytes || remainingBytes <= 0) {
+  if (!speedBytesPerSec || speedBytesPerSec <= 0 || !isFinite(speedBytesPerSec) || !isFinite(remainingBytes) || remainingBytes <= 0) {
     return '--:--';
   }
   const seconds = Math.ceil(remainingBytes / speedBytesPerSec);

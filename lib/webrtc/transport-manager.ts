@@ -36,6 +36,10 @@ export class TransportManager {
     channel.onopen = () => {
       if (this.onStatusChange) this.onStatusChange('webrtc', true);
     };
+    // If channel is already open, fire status immediately
+    if (channel.readyState === 'open') {
+      if (this.onStatusChange) this.onStatusChange('webrtc', true);
+    }
 
     channel.onmessage = (event) => {
       if (this.onMessageCallback) this.onMessageCallback(event.data);
@@ -116,8 +120,7 @@ export class TransportManager {
     } else if (this.activeType === 'webtransport' && this.webTransport?.datagrams?.writable) {
       const writer = this.webTransport.datagrams.writable.getWriter();
       const payload = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
-      writer.write(payload);
-      writer.releaseLock();
+      writer.write(payload).then(() => writer.releaseLock()).catch(() => { try { writer.releaseLock(); } catch {} });
     } else if (this.activeType === 'websocket' && this.webSocket?.readyState === WebSocket.OPEN) {
       this.webSocket.send(data);
     }

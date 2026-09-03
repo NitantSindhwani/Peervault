@@ -1,5 +1,5 @@
 'use client';
-
+import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { DeviceMobile, Sparkle } from '@phosphor-icons/react';
 
@@ -9,12 +9,28 @@ export interface QRCodeViewerProps {
 }
 
 export function QRCodeViewer({ url, size = 260 }: QRCodeViewerProps) {
-  // If running on localhost, swap to LAN IP so a phone on the same Wi-Fi
-  // can actually reach the dev server.
-  let scannableUrl = url;
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    // Keep localhost – production deploys use a real domain which is always fine.
-  }
+  const [resolvedUrl, setResolvedUrl] = useState<string>(url);
+
+  useEffect(() => {
+    let active = true;
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      fetch('/api/network-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (active && data.lanIp && data.lanIp !== '127.0.0.1') {
+            const port = window.location.port ? `:${window.location.port}` : '';
+            const lanOrigin = `${window.location.protocol}//${data.lanIp}${port}`;
+            setResolvedUrl(url.replace(window.location.origin, lanOrigin));
+          }
+        })
+        .catch(() => {});
+    } else {
+      setResolvedUrl(url);
+    }
+    return () => { active = false; };
+  }, [url]);
+
+  const scannableUrl = resolvedUrl;
 
   return (
     <div className="flex flex-col items-center space-y-3 font-mono">

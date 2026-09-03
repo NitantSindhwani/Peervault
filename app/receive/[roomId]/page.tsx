@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import {
   DownloadSimple,
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
   MusicNotes,
   FileText,
   QrCode,
+  ArrowsClockwise,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
@@ -23,8 +25,9 @@ import { MediaPlayer } from '@/components/MediaPlayer';
 import { QRScannerModal } from '@/components/QRScannerModal';
 import { formatBytes } from '@/lib/utils/format';
 
-export default function ReceivePage({ params }: { params: Promise<{ roomId: string }> }) {
-  const { roomId } = use(params);
+export default function ReceivePage({ params }: { params?: Promise<{ roomId: string }> }) {
+  const routeParams = useParams();
+  const roomId = (routeParams?.roomId as string) || '';
   const [passphrase, setPassphrase] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [attestation, setAttestation] = useState<WebAuthnAttestationResult | null>(null);
@@ -43,112 +46,61 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const [hasAccepted, setHasAccepted] = useState(false);
 
   // Check URL offer hash or signaling offer metadata on load.
-  // Races HTTP polling vs. BroadcastChannel / localStorage / WebSocket so whichever
-  // channel delivers the offer first wins — fixes the serverless multi-instance problem.
   useEffect(() => {
-    let mounted = true;
+    let active = true;
+
     async function checkOffer() {
       if (typeof window === 'undefined') return;
+      console.log('[RECEIVER EFFECT] checkOffer started. roomId:', roomId, 'hash:', window.location.hash.substring(0, 30));
+      const cleanRoomId = (roomId || '').split('#')[0];
 
-      const cleanRoomId = roomId.split('#')[0];
-      let payload = await parseInstantOfferHash(window.location.hash);
-
-      if (!payload) {
-        payload = await new Promise<any>((resolve) => {
-          let resolved = false;
-          const tryResolve = (p: any) => {
-            if (resolved || !mounted) return;
-            resolved = true;
-            resolve(p);
-          };
-
-          // BroadcastChannel
-          let bc: BroadcastChannel | null = null;
-          if (typeof BroadcastChannel !== 'undefined') {
-            try {
-              bc = new BroadcastChannel(`pv_sig_bc_${cleanRoomId}`);
-              bc.onmessage = (e) => {
-                const d = e.data;
-                if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer) {
-                  tryResolve(d.offer);
-                }
-              };
-            } catch {}
+      // 1. Instant check from URL hash
+      try {
+        const hashPayload = await parseInstantOfferHash(window.location.hash);
+        console.log('[RECEIVER EFFECT] hashPayload result:', hashPayload ? hashPayload.fileName : 'null');
+        if (hashPayload) {
+          if (active) {
+            setOfferPayload(hashPayload);
+            if (!hashPayload.passphraseRequired) setIsUnlocked(true);
+            setIsLoadingOffer(false);
           }
-
-          // localStorage storage events
-          const onStorage = (e: StorageEvent) => {
-            if (e.key === `pv_sig_evt_${cleanRoomId}` && e.newValue) {
-              try {
-                const d = JSON.parse(e.newValue);
-                if (d?.action === 'submit_offer' && d?.offer) tryResolve(d.offer);
-              } catch {}
-            }
-          };
-          window.addEventListener('storage', onStorage);
-
-          // WebSocket relay
-          const wsRefs: WebSocket[] = [];
-          for (const url of [
-            `wss://0.peerjs.com/peerjs?key=peerjs&id=pv_rx_${cleanRoomId}_${Math.random().toString(36).substring(2, 6)}`,
-            `wss://socketsbay.com/wss/v2/1/${cleanRoomId}/`,
-          ]) {
-            try {
-              const ws = new WebSocket(url);
-              wsRefs.push(ws);
-              ws.onmessage = (e) => {
-                try {
-                  const d = JSON.parse(e.data);
-                  if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer) tryResolve(d.offer);
-                } catch {}
-              };
-            } catch {}
-          }
-
-          // HTTP polling
-          let httpDone = false;
-          const httpPoll = async () => {
-            for (let attempt = 0; attempt < 40 && !resolved; attempt++) {
-              try {
-                const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-                if (res.ok) {
-                  const data = await res.json();
-                  if (data.offer) { tryResolve(data.offer); break; }
-                }
-              } catch {}
-              if (!mounted) break;
-              await new Promise((r) => setTimeout(r, 400));
-            }
-            httpDone = true;
-            if (!resolved) tryResolve(null);
-          };
-          void httpPoll();
-
-          const cleanup = setInterval(() => {
-            if (!resolved && !httpDone) return;
-            clearInterval(cleanup);
-            window.removeEventListener('storage', onStorage);
-            for (const ws of wsRefs) { try { ws.close(); } catch {} }
-            if (bc) { try { bc.close(); } catch {} }
-          }, 500);
-        });
+          return;
+        }
+      } catch (err) {
+        console.warn('[Receive] Failed parsing URL hash:', err);
       }
 
-      if (!mounted) return;
-      setIsLoadingOffer(false);
+      // 2. Resilient signaling API poll
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (!active) return;
+        try {
+          const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.offer) {
+              if (active) {
+                setOfferPayload(data.offer);
+                if (!data.offer.passphraseRequired) setIsUnlocked(true);
+                setIsLoadingOffer(false);
+              }
+              return;
+            }
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
-      if (payload) {
-        setOfferPayload(payload);
-        if (!payload.passphraseRequired) {
-          setIsUnlocked(true);
-        }
-      } else {
+      // 3. Fallback: unblock UI so recipient can still accept and startReceiver
+      if (active) {
         setIsUnlocked(true);
+        setIsLoadingOffer(false);
       }
     }
+
     checkOffer();
+
     return () => {
-      mounted = false;
+      active = false;
     };
   }, [roomId]);
 
@@ -260,6 +212,18 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
   const isCompleted = state === 'complete';
   const isError = state === 'error';
 
+  if (typeof window !== 'undefined') {
+    (window as any).__RECEIVER_DEBUG = {
+      state,
+      isLoadingOffer,
+      offerPayload,
+      isUnlocked,
+      hasAccepted,
+      fileName,
+      fileSizeBytes,
+    };
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-12 font-mono">
       
@@ -305,7 +269,7 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
             </p>
           </div>
         </div>
-      ) : !isUnlocked ? (
+      ) : !isUnlocked && Boolean(offerPayload?.passphraseRequired) ? (
         /* Password Vault Unlock Screen */
         <div className="max-w-md mx-auto bg-[var(--bg-surface)] border border-[var(--accent)]/40 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl glow-amber">
           <div className="text-center space-y-3">
@@ -411,14 +375,30 @@ export default function ReceivePage({ params }: { params: Promise<{ roomId: stri
           </div>
 
           {/* Active Live Telemetry & Kinetic Topology */}
-          <TelemetryDashboard
-            mock={false}
-            liveData={{
-              ...telemetry,
-              totalBytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
-              totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 262144),
-            }}
-          />
+          {state === 'negotiating' || state === 'generating_key' ? (
+            <div className="bg-[var(--bg-surface)] border border-amber-500/30 rounded-2xl p-8 text-center space-y-4 font-mono">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border border-amber-500/30 animate-spin">
+                <ArrowsClockwise className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-[var(--text-primary)] font-display">
+                  Connecting to Sender Device...
+                </h4>
+                <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
+                  Handshaking WebRTC P2P direct data lanes. Stream starting...
+                </p>
+              </div>
+            </div>
+          ) : (
+            <TelemetryDashboard
+              mock={false}
+              liveData={{
+                ...telemetry,
+                totalBytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
+                totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 262144),
+              }}
+            />
+          )}
 
         </div>
       ) : (

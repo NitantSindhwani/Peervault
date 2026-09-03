@@ -13,7 +13,7 @@ export interface WindowMetrics {
 }
 
 export class BackpressureController {
-  private windowSize: number = 32; // Keep in-flight chunks bounded until receiver ACKs drain.
+  private windowSize: number = 64; // Increased to 64 to allow a larger in-flight pipeline
   private unacknowledged: Set<number> = new Set();
   private bufferedAmountLowThreshold: number = 4 * 1024 * 1024; // 4MB
   private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB per channel
@@ -84,7 +84,7 @@ export class BackpressureController {
    * Dynamic window adjustment based on disk write speeds
    */
   public adjustWindowSize(newSize: number): void {
-    this.windowSize = Math.max(256, Math.min(8192, newSize));
+    this.windowSize = Math.max(64, Math.min(8192, newSize));
   }
 
   private setPaused(paused: boolean): void {

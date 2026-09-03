@@ -371,8 +371,7 @@ export function useTransfer({
       const keyPair = await generateECDHKeyPair();
       localKeyPairRef.current = keyPair;
 
-      const rawPubKey = await window.crypto.subtle.exportKey('raw', keyPair.publicKey);
-      const pubKeyHex = Array.from(new Uint8Array(rawPubKey))
+      const pubKeyHex = Array.from(new Uint8Array(keyPair.rawPublicKey))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
@@ -1152,8 +1151,7 @@ export function useTransfer({
       const keyPair = await generateECDHKeyPair();
       localKeyPairRef.current = keyPair;
 
-      const rawPubKey = await window.crypto.subtle.exportKey('raw', keyPair.publicKey);
-      const pubKeyHex = Array.from(new Uint8Array(rawPubKey))
+      const pubKeyHex = Array.from(new Uint8Array(keyPair.rawPublicKey))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
@@ -1406,6 +1404,50 @@ export function useTransfer({
     if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
     telemetryIntervalRef.current = setInterval(sampleTelemetry, TELEMETRY_SAMPLE_MS);
 
+    const finalizeReceiverTransfer = async () => {
+      if (isFinalizingRef.current) return;
+      isFinalizingRef.current = true;
+      if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
+      telemetryIntervalRef.current = null;
+      const progress = receiverProgressRef.current;
+      setTelemetry({
+        bytesTransferred: progress.totalBytes || progress.bytesTransferred,
+        totalBytes: progress.totalBytes || progress.bytesTransferred,
+        totalChunks: progress.totalChunks || progress.receivedChunks,
+        progressPercent: 100,
+        speedBytesPerSec: 0,
+        rttMs: 0,
+        chunkIndex: progress.totalChunks || progress.receivedChunks,
+        bbrState: 'COMPLETE',
+        connectionType: connectionTypeRef.current,
+        merkleRoot: null,
+        etaString: '--:--',
+        chunkSizeBytes: progress.chunkSize,
+      });
+      if (roomId) removeResumeSession(roomId);
+      setState('verifying');
+      const result = await diskWriterRef.current?.close();
+      if (diskWriterRef.current) {
+        setReceivedFileName(diskWriterRef.current.getFileName());
+      }
+      if (result?.downloadUrl) {
+        setReceivedBlobUrl(result.downloadUrl);
+      }
+      setReceivedSavedToDisk(result?.tier === 'direct_fs');
+      setState('complete');
+
+      fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'transfer_completed',
+          roomId: roomId?.split('#')[0] || 'unknown',
+          fileName: actualFileName,
+          fileSize: progress.totalBytes,
+        }),
+      }).catch(() => {});
+    };
+
     if (controlChannel && 'binaryType' in controlChannel) {
       controlChannel.binaryType = 'arraybuffer';
 
@@ -1437,6 +1479,10 @@ export function useTransfer({
               nominalChunkSize = actualFileSize > 0 && msg.totalChunks > 0 ? Math.ceil(actualFileSize / msg.totalChunks) : nominalChunkSize;
             }
             syncExpectedTotals();
+            // Wait 200ms to allow any in-flight chunk write operations to settle, then finalize
+            setTimeout(() => {
+              void finalizeReceiverTransfer();
+            }, 200);
           }
         } catch {}
       };
@@ -1499,7 +1545,7 @@ export function useTransfer({
           try {
             if (controlChannel && controlChannel.readyState === 'open') {
               const isFinalChunk = progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks;
-              if (progress.receivedChunks % 64 === 0 || isFinalChunk) {
+              if (progress.receivedChunks % 16 === 0 || isFinalChunk) {
                 controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
               }
             }
@@ -1520,46 +1566,8 @@ export function useTransfer({
 
           const isFullyReceived = (progress.totalBytes === 0 && receivedChunkSet.size === 0 && actualFileSize === 0) || (progress.totalBytes > 0
             && (progress.bytesTransferred >= progress.totalBytes || (progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks)));
-          if (isFullyReceived && !isFinalizingRef.current) {
-            isFinalizingRef.current = true;
-            if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
-            telemetryIntervalRef.current = null;
-            setTelemetry({
-              bytesTransferred: progress.totalBytes,
-              totalBytes: progress.totalBytes,
-              totalChunks: progress.totalChunks,
-              progressPercent: 100,
-              speedBytesPerSec: 0,
-              rttMs: 0,
-              chunkIndex: progress.totalChunks,
-              bbrState: 'COMPLETE',
-              connectionType: connectionTypeRef.current,
-              merkleRoot: null,
-              etaString: '--:--',
-              chunkSizeBytes: progress.chunkSize,
-            });
-            if (roomId) removeResumeSession(roomId);
-            setState('verifying');
-            const result = await diskWriterRef.current.close();
-            if (diskWriterRef.current) {
-              setReceivedFileName(diskWriterRef.current.getFileName());
-            }
-            if (result?.downloadUrl) {
-              setReceivedBlobUrl(result.downloadUrl);
-            }
-            setReceivedSavedToDisk(result?.tier === 'direct_fs');
-            setState('complete');
-
-            fetch('/api/log', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                event: 'transfer_completed',
-                roomId: roomId?.split('#')[0] || 'unknown',
-                fileName: actualFileName,
-                fileSize: progress.totalBytes,
-              }),
-            }).catch(() => {});
+          if (isFullyReceived) {
+            void finalizeReceiverTransfer();
           }
         }
       } catch (err: any) {

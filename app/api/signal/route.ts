@@ -5,23 +5,32 @@ export const dynamic = 'force-dynamic';
 
 const MAX_SIGNAL_BODY_BYTES = 128 * 1024;
 
-// Cloudflare Workers & Serverless Universal In-Memory Signaling Cache
-const globalForSignal = globalThis as unknown as {
-  signalCache: Map<string, { offer?: any; answer?: any; senderCandidates?: any[]; receiverCandidates?: any[]; updatedAt: number }>;
-};
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
-const signalCache = globalForSignal.signalCache || new Map();
-globalForSignal.signalCache = signalCache;
+// Cloudflare Workers / Serverless fallback + Local File System Cache
+// Using the file system guarantees that multiple Next.js dev workers share the same state.
+const CACHE_DIR = path.join(os.tmpdir(), 'peervault_signals');
+try {
+  if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+} catch {}
 
-// Garbage Collection: Remove rooms older than 24 hours to prevent OOM
-if (!(globalForSignal as any).gcInterval) {
-  (globalForSignal as any).gcInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [roomId, state] of signalCache.entries()) {
-      if (now - state.updatedAt > 24 * 60 * 60 * 1000) {
-        signalCache.delete(roomId);
+// Garbage Collection: Remove rooms older than 24 hours to prevent disk bloat
+if (!(globalThis as any).gcInterval) {
+  (globalThis as any).gcInterval = setInterval(() => {
+    try {
+      const now = Date.now();
+      const files = fs.readdirSync(CACHE_DIR);
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const filePath = path.join(CACHE_DIR, file);
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > 24 * 60 * 60 * 1000) {
+          fs.unlinkSync(filePath);
+        }
       }
-    }
+    } catch {}
   }, 60 * 60 * 1000); // Run every hour
 }
 
@@ -36,13 +45,22 @@ function signalResponse(body: unknown, init?: ResponseInit) {
 }
 
 function readSignalState(roomId: string) {
-  let state = signalCache.get(roomId);
-  return state || { senderCandidates: [], receiverCandidates: [], updatedAt: Date.now() };
+  const filePath = path.join(CACHE_DIR, `${roomId}.json`);
+  try {
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch {}
+  return { senderCandidates: [], receiverCandidates: [], updatedAt: Date.now() };
 }
 
 function writeSignalState(roomId: string, state: any) {
   state.updatedAt = Date.now();
-  signalCache.set(roomId, state);
+  const filePath = path.join(CACHE_DIR, `${roomId}.json`);
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(state));
+  } catch {}
 }
 
 export async function GET(request: NextRequest) {

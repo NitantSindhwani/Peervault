@@ -195,8 +195,31 @@ export default function SendPage() {
     }
   };
 
+  const [lanIp, setLanIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      fetch('/api/network-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.lanIp && data.lanIp !== '127.0.0.1') setLanIp(data.lanIp);
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  const getEffectiveShareUrl = () => {
+    let base = shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '');
+    if (lanIp && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const lanOrigin = `${window.location.protocol}//${lanIp}${port}`;
+      base = base.replace(window.location.origin, lanOrigin);
+    }
+    return base;
+  };
+
   const copyShareUrl = () => {
-    const targetUrl = shareUrl || (roomId ? `${window.location.origin}/receive/${roomId}` : '');
+    const targetUrl = getEffectiveShareUrl();
     if (!targetUrl) return;
     navigator.clipboard.writeText(targetUrl);
     sfx.playCopy();
@@ -501,7 +524,7 @@ export default function SendPage() {
                     name="shareLinkUrl"
                     type="text"
                     readOnly
-                    value={shareUrl || (roomId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}` : '')}
+                    value={getEffectiveShareUrl()}
                     className="flex-1 px-3.5 py-3 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] font-bold selection:bg-[var(--accent)] cursor-pointer tracking-wide"
                   />
                   <div className="flex items-center gap-2">
@@ -528,7 +551,7 @@ export default function SendPage() {
             {roomId && (
               <div className="md:col-span-4 flex justify-center border-t md:border-t-0 md:border-l border-[var(--border-color)] pt-4 md:pt-0 md:pl-6">
                 <QRCodeViewer
-                  url={shareUrl || `${typeof window !== 'undefined' ? window.location.origin : ''}/receive/${roomId}`}
+                  url={getEffectiveShareUrl()}
                   size={200}
                 />
               </div>
@@ -548,6 +571,20 @@ export default function SendPage() {
                 </h4>
                 <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
                   Keep this browser tab open. As soon as your recipient opens the link, a direct peer-to-peer connection will be established instantly.
+                </p>
+              </div>
+            </div>
+          ) : state === 'negotiating' ? (
+            <div className="bg-[var(--bg-surface)] border border-amber-500/30 rounded-2xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border border-amber-500/30 animate-spin">
+                <ArrowsClockwise className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 font-mono">
+                <h4 className="text-base font-bold text-[var(--text-primary)] font-display">
+                  Connecting to Recipient Device...
+                </h4>
+                <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
+                  Recipient has opened the link. Establishing direct peer-to-peer WebRTC data lanes...
                 </p>
               </div>
             </div>

@@ -70,8 +70,8 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
         console.warn('[Receive] Failed parsing URL hash:', err);
       }
 
-      // 2. Resilient signaling API poll
-      for (let attempt = 0; attempt < 30; attempt++) {
+      // 2. Resilient signaling API + Global PubSub poll
+      for (let attempt = 0; attempt < 40; attempt++) {
         if (!active) return;
         try {
           const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
@@ -84,6 +84,30 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
                 setIsLoadingOffer(false);
               }
               return;
+            }
+          }
+
+          // Edge relay fallback (handles multi-isolate serverless deployments)
+          const ntfyRes = await fetch(`https://ntfy.sh/pv_sig_${cleanRoomId}/json?poll=1`);
+          if (ntfyRes.ok) {
+            const text = await ntfyRes.text();
+            const lines = text.trim().split('\n');
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const env = JSON.parse(line);
+                if (env.event === 'message' && env.message) {
+                  const d = typeof env.message === 'string' ? JSON.parse(env.message) : env.message;
+                  if (d?.action === 'submit_offer' && d?.offer) {
+                    if (active) {
+                      setOfferPayload(d.offer);
+                      if (!d.offer.passphraseRequired) setIsUnlocked(true);
+                      setIsLoadingOffer(false);
+                    }
+                    return;
+                  }
+                }
+              } catch {}
             }
           }
         } catch {}

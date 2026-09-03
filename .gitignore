@@ -60,3 +60,4 @@ yarn-error.log*
 .vercel
 /brag-output
 *.json
+scratch/

@@ -26,7 +26,7 @@ export class WebSocketSignaler {
     this.roomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
     this.onMessageCallback = onMessage;
     this.RELAY_URLS = [
-      `wss://socketsbay.com/wss/v2/1/${this.roomId}/`,
+      `wss://ntfy.sh/pv_sig_${this.roomId}/ws`,
     ];
   }
 
@@ -65,6 +65,28 @@ export class WebSocketSignaler {
     for (const url of this.RELAY_URLS) {
       this.connectToRelay(url);
     }
+
+    // 4. Initial poll to catch any message that arrived before WebSocket opened
+    if (typeof fetch !== 'undefined') {
+      fetch(`https://ntfy.sh/pv_sig_${this.roomId}/json?poll=1`)
+        .then((r) => r.text())
+        .then((text) => {
+          const lines = text.trim().split('\n');
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const envelope = JSON.parse(line);
+              if (envelope.event === 'message' && envelope.message) {
+                const data = typeof envelope.message === 'string' ? JSON.parse(envelope.message) : envelope.message;
+                if (data && (data.roomId === this.roomId || !data.roomId)) {
+                  this.onMessageCallback(data);
+                }
+              }
+            } catch {}
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   private connectToRelay(url: string): void {
@@ -81,9 +103,18 @@ export class WebSocketSignaler {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          if (data && data.roomId === this.roomId) {
-            this.onMessageCallback(data);
+          const envelope = JSON.parse(event.data);
+          // Handle ntfy.sh envelope format
+          if (envelope.event === 'message' && envelope.message) {
+            const data = typeof envelope.message === 'string' ? JSON.parse(envelope.message) : envelope.message;
+            if (data && (data.roomId === this.roomId || !data.roomId)) {
+              this.onMessageCallback(data);
+            }
+            return;
+          }
+          // Direct JSON message fallback
+          if (envelope && envelope.roomId === this.roomId) {
+            this.onMessageCallback(envelope);
           }
         } catch {}
       };
@@ -127,6 +158,15 @@ export class WebSocketSignaler {
       if (ws.readyState === WebSocket.OPEN) {
         try { ws.send(msg); } catch {}
       }
+    }
+
+    // High-reliability edge HTTP pubsub broadcast (works across network boundaries & Cloudflare isolates)
+    if (typeof fetch !== 'undefined') {
+      fetch(`https://ntfy.sh/pv_sig_${this.roomId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: msg,
+      }).catch(() => {});
     }
   }
 

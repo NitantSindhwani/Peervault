@@ -607,29 +607,33 @@ export function useTransfer({
           });
         }
 
+        const applyAnswer = async (answer: any) => {
+          const ansStr = typeof answer === 'string' ? answer : JSON.stringify(answer);
+          if (lastAppliedAnswerRef.current !== ansStr && !channels.pc.remoteDescription) {
+            lastAppliedAnswerRef.current = ansStr;
+            try {
+              const ansObj = typeof answer === 'string' ? JSON.parse(answer) : answer;
+              await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+              addLog('SIGNAL', 'Successfully set remote description from recipient SDP Answer');
+              setState('negotiating');
+              // Flush any ICE candidates that arrived before the answer
+              for (const cand of pendingReceiverCandidates) {
+                try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+              }
+              pendingReceiverCandidates.length = 0;
+            } catch (err: any) {
+              addLog('ERROR', `setRemoteDescription answer error: ${err.message}`);
+            }
+          }
+        };
+
         try {
           const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
           if (res.ok) {
             const data = await res.json();
 
             if (data.answer) {
-              const ansStr = typeof data.answer === 'string' ? data.answer : JSON.stringify(data.answer);
-              if (lastAppliedAnswerRef.current !== ansStr) {
-                lastAppliedAnswerRef.current = ansStr;
-                try {
-                  const ansObj = typeof data.answer === 'string' ? JSON.parse(data.answer) : data.answer;
-                  await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
-                  addLog('SIGNAL', 'Successfully set remote description from recipient SDP Answer');
-                  setState('negotiating');
-                  // Flush any ICE candidates that arrived before the answer
-                  for (const cand of pendingReceiverCandidates) {
-                    try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
-                  }
-                  pendingReceiverCandidates.length = 0;
-                } catch (err: any) {
-                  addLog('ERROR', `setRemoteDescription answer error: ${err.message}`);
-                }
-              }
+              await applyAnswer(data.answer);
             }
 
             if (data.receiverCandidates && data.receiverCandidates.length > 0) {
@@ -643,6 +647,36 @@ export function useTransfer({
             }
           }
         } catch {}
+
+        // Edge PubSub fallback (resolves answer across multi-isolate / serverless environments)
+        if (!channels.pc.remoteDescription) {
+          try {
+            const ntfyRes = await fetch(`https://ntfy.sh/pv_sig_${generatedRoomId}/json?poll=1`);
+            if (ntfyRes.ok) {
+              const text = await ntfyRes.text();
+              const lines = text.trim().split('\n');
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const env = JSON.parse(line);
+                  if (env.event === 'message' && env.message) {
+                    const d = typeof env.message === 'string' ? JSON.parse(env.message) : env.message;
+                    if (d?.action === 'submit_answer' && d?.answer) {
+                      await applyAnswer(d.answer);
+                    }
+                    if (d?.action === 'submit_receiver_candidate' && d?.candidate) {
+                      const key = typeof d.candidate === 'string' ? d.candidate : JSON.stringify(d.candidate);
+                      if (!processedReceiverCandidates.has(key)) {
+                        processedReceiverCandidates.add(key);
+                        await processReceiverCandidate(d.candidate);
+                      }
+                    }
+                  }
+                } catch {}
+              }
+            }
+          } catch {}
+        }
 
         checkChannelsReady();
       }, 250);

@@ -30,7 +30,9 @@ export function QRCodeViewer({ url, size = 260 }: QRCodeViewerProps) {
     return () => { active = false; };
   }, [url]);
 
-  const scannableUrl = resolvedUrl;
+  // Strip large hash payload for the QR code so the QR matrix remains clean,
+  // low-density, and instant for smartphone cameras to scan.
+  const scannableUrl = resolvedUrl ? resolvedUrl.split('#')[0] : '';
 
   return (
     <div className="flex flex-col items-center space-y-3 font-mono">

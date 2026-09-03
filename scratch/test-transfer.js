@@ -190,8 +190,8 @@ async function main() {
       return;
     }
 
-    const receiverUrl = shareUrl.replace('192.168.0.144', 'localhost');
-    console.log('Opening Receiver Tab with full Share URL:', receiverUrl);
+    const receiverUrl = shareUrl.replace('192.168.0.144', 'localhost').split('#')[0];
+    console.log('Opening Receiver Tab without Hash URL:', receiverUrl);
     const receiverTarget = await fetchPut(`http://127.0.0.1:9222/json/new?${encodeURIComponent(receiverUrl)}`);
     const receiverCdp = new CDPClient(receiverTarget.webSocketDebuggerUrl, 'RECEIVER');
     await receiverCdp.waitOpen();

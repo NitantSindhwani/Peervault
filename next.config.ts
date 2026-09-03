@@ -7,13 +7,13 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
   {
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-      "connect-src 'self' wss: https: stun: turn:",
+      "connect-src 'self' http: https: ws: wss: stun: turn:",
       "worker-src 'self' blob:",
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",
@@ -24,6 +24,14 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // @ts-ignore
+  allowedDevOrigins: [
+    '192.168.0.144',
+    '192.168.0.144:3000',
+    'localhost:3000',
+    '127.0.0.1:3000',
+    '0.0.0.0:3000',
+  ],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

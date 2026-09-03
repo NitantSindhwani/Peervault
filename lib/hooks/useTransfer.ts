@@ -1062,7 +1062,6 @@ export function useTransfer({
 
           // --- Channel 3: Public WebSocket relay (cross-device) ---
           const relayUrls = [
-            `wss://0.peerjs.com/peerjs?key=peerjs&id=pv_rx_${cleanRoomId}_${Math.random().toString(36).substring(2, 6)}`,
             `wss://socketsbay.com/wss/v2/1/${cleanRoomId}/`,
           ];
           const wsRefs: WebSocket[] = [];

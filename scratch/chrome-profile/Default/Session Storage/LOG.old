@@ -1,5 +1,6 @@
-2026/09/03-08:11:22.456 2758 Reusing MANIFEST D:\Peervault\scratch\chrome-profile\Default\Session Storage/MANIFEST-000001
-2026/09/03-08:11:22.459 2758 Recovering log #29
-2026/09/03-08:11:22.459 2758 Level-0 table #32: started
-2026/09/03-08:11:22.470 2758 Level-0 table #32: 26699 bytes OK
-2026/09/03-08:11:22.478 2758 Delete type=0 #29
+2026/09/03-08:12:20.334 6f7c Reusing MANIFEST D:\Peervault\scratch\chrome-profile\Default\Session Storage/MANIFEST-000001
+2026/09/03-08:12:20.336 6f7c Recovering log #33
+2026/09/03-08:12:20.341 6f7c Reusing old log D:\Peervault\scratch\chrome-profile\Default\Session Storage/000033.log 
+2026/09/03-08:12:31.086 1974 Level-0 table #36: started
+2026/09/03-08:12:31.100 1974 Level-0 table #36: 26610 bytes OK
+2026/09/03-08:12:31.101 1974 Delete type=0 #33

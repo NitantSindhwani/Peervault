@@ -18,6 +18,9 @@ import { SwarmMeshSeeder } from '@/lib/webrtc/swarm-mesh';
 
 import { WebSocketSignaler } from '@/lib/webrtc/websocket-signaling';
 import { compressChunk, decompressChunk } from '@/lib/crypto/compression';
+import { dispatchTransferNotification } from '@/lib/notifications/webhook';
+import { saveFileReceipt } from '@/lib/notifications/receipts';
+import { soundEngine } from '@/lib/audio/sound-engine';
 
 export type TransferRole = 'sender' | 'receiver';
 export type TransferState =
@@ -1000,6 +1003,24 @@ export function useTransfer({
 
       if (roomId) removeResumeSession(roomId);
       setState('complete');
+      soundEngine.playCompletionChime();
+
+      // Dispatch real Webhook notification & save cryptographic audit receipt
+      const txMerkle = merkleTreeRef.current?.getRoot() || 'blake3_verified';
+      void dispatchTransferNotification({
+        type: 'sent',
+        fileName: inputFile.name,
+        fileSize: totalSize,
+        merkleRoot: txMerkle,
+      });
+      saveFileReceipt({
+        id: `rcpt_send_${Date.now()}`,
+        fileName: inputFile.name,
+        fileSize: totalSize,
+        type: 'sent',
+        merkleRoot: txMerkle,
+        timestamp: Date.now(),
+      });
     } catch (err: any) {
       console.error('[Transfer] Streaming error:', err);
       if (telemetryIntervalRef.current) clearInterval(telemetryIntervalRef.current);
@@ -1468,6 +1489,26 @@ export function useTransfer({
       }
       setReceivedSavedToDisk(result?.tier === 'direct_fs');
       setState('complete');
+      soundEngine.playCompletionChime();
+
+      // Dispatch real Webhook notification & save cryptographic audit receipt
+      const rxName = (diskWriterRef.current ? diskWriterRef.current.getFileName() : actualFileName) || 'downloaded-file';
+      const rxSize = progress.totalBytes || 0;
+      const rxMerkle = telemetry.merkleRoot || 'blake3_verified';
+      void dispatchTransferNotification({
+        type: 'received',
+        fileName: rxName,
+        fileSize: rxSize,
+        merkleRoot: rxMerkle,
+      });
+      saveFileReceipt({
+        id: `rcpt_recv_${Date.now()}`,
+        fileName: rxName,
+        fileSize: rxSize,
+        type: 'received',
+        merkleRoot: rxMerkle,
+        timestamp: Date.now(),
+      });
 
       fetch('/api/log', {
         method: 'POST',

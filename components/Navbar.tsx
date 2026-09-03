@@ -193,9 +193,9 @@ export function Navbar() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} />
       </header>
+
+      <QRScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} />
     </>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
   QrCode,
@@ -51,6 +52,24 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
   const [scannedResult, setScannedResult] = useState<string | null>(null);
   const [isRequestingCamera, setIsRequestingCamera] = useState(false);
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   // Detect native BarcodeDetector API support
   const barcodeDetectorRef = useRef<any>(null);
 
@@ -100,6 +119,19 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
     setIsScanning(false);
     setTorchOn(false);
   }, []);
+
+  // Handle ESC key to dismiss modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        stopCamera();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, stopCamera, onClose]);
 
   const handleDecodedCode = useCallback(
     (codeText: string) => {
@@ -428,9 +460,9 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
     handleDecodedCode(raw);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
+  return createPortal(
     /* Backdrop Overlay - Clicking outside modal closes it */
     <div
       onClick={(e) => {
@@ -439,36 +471,39 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 sm:p-6 overflow-y-auto animate-fade-in font-mono cursor-pointer"
+      id="qr-scanner-backdrop"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-6 overflow-y-auto animate-fade-in font-mono cursor-pointer"
     >
       {/* Modal Dialog Card */}
       <div
+        id="qr-scanner-dialog"
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-2xl flex flex-col glow-amber cursor-default my-auto"
+        className="relative w-full max-w-md max-h-[92dvh] bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-2xl flex flex-col glow-amber cursor-default my-auto"
       >
         
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] bg-[var(--bg-main)]/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-[var(--border-color)] bg-[var(--bg-main)]/80 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
               <QrCode className="w-5 h-5 font-bold" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-[var(--text-primary)] font-display">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-[var(--text-primary)] font-display truncate">
                 Pair PeerVault Stream
               </h2>
-              <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
+              <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider truncate">
                 Instant Direct Transfer Receiver
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Flip Camera Button */}
             {activeTab === 'camera' && availableVideoDevices.length > 1 && (
               <button
+                type="button"
                 onClick={toggleCameraFacing}
-                className="p-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                className="w-10 h-10 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center justify-center active:scale-95"
                 title="Flip Camera (Front/Back)"
               >
                 <ArrowsClockwise className="w-4 h-4" />
@@ -478,8 +513,9 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
             {/* Torch Toggle */}
             {activeTab === 'camera' && hasTorch && (
               <button
+                type="button"
                 onClick={toggleTorch}
-                className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                className={`w-10 h-10 rounded-xl border transition-colors cursor-pointer flex items-center justify-center active:scale-95 ${
                   torchOn
                     ? 'bg-[var(--accent)] text-[var(--bg-main)] border-[var(--accent)]'
                     : 'bg-[var(--bg-surface)] border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -492,22 +528,24 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
 
             {/* Close Button */}
             <button
+              type="button"
               onClick={() => {
                 stopCamera();
                 onClose();
               }}
-              className="w-9 h-9 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 transition-all flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+              className="w-10 h-10 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 active:scale-90 transition-all flex items-center justify-center cursor-pointer shadow-sm shrink-0"
               aria-label="Close Scanner"
               title="Close Modal (Esc)"
             >
-              <X className="w-4 h-4" weight="bold" />
+              <X className="w-5 h-5" weight="bold" />
             </button>
           </div>
         </div>
 
         {/* Tab Selector: Camera Scanner vs Manual Room Code */}
-        <div className="flex border-b border-[var(--border-color)] bg-[var(--bg-main)] text-xs font-bold">
+        <div className="flex border-b border-[var(--border-color)] bg-[var(--bg-main)] text-xs font-bold shrink-0">
           <button
+            type="button"
             onClick={() => {
               setActiveTab('camera');
               startCamera();
@@ -523,6 +561,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           </button>
 
           <button
+            type="button"
             onClick={() => {
               stopCamera();
               setActiveTab('manual');
@@ -538,153 +577,159 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           </button>
         </div>
 
-        {/* Camera Scanner Viewport */}
-        {activeTab === 'camera' ? (
-          <div className="relative w-full aspect-square bg-black flex items-center justify-center overflow-hidden">
-            {/* Hidden Canvas for Decoding */}
-            <canvas ref={canvasRef} className="hidden" />
+        {/* Scrollable Modal Content */}
+        <div className="overflow-y-auto flex-1">
+          {/* Camera Scanner Viewport */}
+          {activeTab === 'camera' ? (
+            <div className="relative w-full aspect-square bg-black flex items-center justify-center overflow-hidden">
+              {/* Hidden Canvas for Decoding */}
+              <canvas ref={canvasRef} className="hidden" />
 
-            {/* Video Stream Element */}
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              style={{ transform: `scale(${zoomLevel})` }}
-              className={`w-full h-full object-cover transition-all duration-300 ${
-                isScanning ? 'opacity-100' : 'opacity-0'
-              }`}
-            />
+              {/* Video Stream Element */}
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                style={{ transform: `scale(${zoomLevel})` }}
+                className={`w-full h-full object-cover transition-all duration-300 ${
+                  isScanning ? 'opacity-100' : 'opacity-0'
+                }`}
+              />
 
-            {/* Target Reticle Overlay */}
-            {isScanning && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-12">
-                <div className="relative w-full aspect-square max-w-[240px] border-2 border-white/20 rounded-2xl overflow-hidden shadow-2xl">
-                  {/* 4 Corner Markers */}
-                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-[var(--accent)] rounded-tl-lg" />
-                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-[var(--accent)] rounded-tr-lg" />
-                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-[var(--accent)] rounded-bl-lg" />
-                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-[var(--accent)] rounded-br-lg" />
+              {/* Target Reticle Overlay */}
+              {isScanning && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-12">
+                  <div className="relative w-full aspect-square max-w-[240px] border-2 border-white/20 rounded-2xl overflow-hidden shadow-2xl">
+                    {/* 4 Corner Markers */}
+                    <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-[var(--accent)] rounded-tl-lg" />
+                    <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-[var(--accent)] rounded-tr-lg" />
+                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-[var(--accent)] rounded-bl-lg" />
+                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-[var(--accent)] rounded-br-lg" />
 
-                  {/* Animated Pulsing Laser Line */}
-                  <div className="w-full h-1 bg-[var(--accent)] shadow-[0_0_15px_var(--accent)] animate-[pulseScan_2s_infinite_linear]" />
+                    {/* Animated Pulsing Laser Line */}
+                    <div className="w-full h-1 bg-[var(--accent)] shadow-[0_0_15px_var(--accent)] animate-[pulseScan_2s_infinite_linear]" />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 1x, 2x, 3x Zoom Controls Overlay */}
-            {isScanning && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 p-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 shadow-xl">
-                {[1, 2, 3].map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => changeZoom(level)}
-                    className={`w-9 h-9 rounded-full font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
-                      zoomLevel === level
-                        ? 'bg-[var(--accent)] text-[var(--bg-main)] shadow-lg scale-105'
-                        : 'text-white/80 hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    {level}x
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Camera Permission Required Overlay */}
-            {!isScanning && hasCameraPermission !== true && (
-              <div className="absolute inset-0 p-6 bg-[var(--bg-main)]/95 flex flex-col items-center justify-center text-center space-y-4 font-mono z-30">
-                <div className="w-16 h-16 rounded-2xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] animate-pulse">
-                  <Camera className="w-8 h-8" weight="bold" />
+              {/* 1x, 2x, 3x Zoom Controls Overlay */}
+              {isScanning && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 p-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 shadow-xl">
+                  {[1, 2, 3].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => changeZoom(level)}
+                      className={`w-9 h-9 rounded-full font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+                        zoomLevel === level
+                          ? 'bg-[var(--accent)] text-[var(--bg-main)] shadow-lg scale-105'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {level}x
+                    </button>
+                  ))}
                 </div>
+              )}
 
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-bold text-[var(--text-primary)] font-display">
-                    {errorMessage ? 'Camera Access Required' : 'Camera Scanner Ready'}
-                  </h3>
-                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed max-w-xs">
-                    {errorMessage || 'Tap below to grant camera access and scan your PeerVault QR code.'}
-                  </p>
+              {/* Camera Permission Required Overlay */}
+              {!isScanning && hasCameraPermission !== true && (
+                <div className="absolute inset-0 p-6 bg-[var(--bg-main)]/95 flex flex-col items-center justify-center text-center space-y-4 font-mono z-30">
+                  <div className="w-16 h-16 rounded-2xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] animate-pulse">
+                    <Camera className="w-8 h-8" weight="bold" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-bold text-[var(--text-primary)] font-display">
+                      {errorMessage ? 'Camera Access Required' : 'Camera Scanner Ready'}
+                    </h3>
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed max-w-xs">
+                      {errorMessage || 'Tap below to grant camera access and scan your PeerVault QR code.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 w-full max-w-xs">
+                    <button
+                      type="button"
+                      onClick={() => startCamera()}
+                      disabled={isRequestingCamera}
+                      className="w-full py-3.5 px-6 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono font-bold text-xs hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg disabled:opacity-50 active:scale-95"
+                    >
+                      <Camera className="w-4 h-4" weight="bold" />
+                      <span>{isRequestingCamera ? 'Requesting Access...' : 'Allow Camera Access & Scan'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('manual')}
+                      className="w-full py-2.5 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] font-mono font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                      <Key className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <span>Enter Room Code Manually</span>
+                    </button>
+                  </div>
                 </div>
+              )}
 
-                <div className="flex flex-col gap-2 w-full max-w-xs">
-                  <button
-                    onClick={() => startCamera()}
-                    disabled={isRequestingCamera}
-                    className="w-full py-3.5 px-6 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono font-bold text-xs hover:opacity-90 transition-all glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg disabled:opacity-50"
-                  >
-                    <Camera className="w-4 h-4" weight="bold" />
-                    <span>{isRequestingCamera ? 'Requesting Access...' : 'Allow Camera Access & Scan'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('manual')}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] font-mono font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Key className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>Enter Room Code Manually</span>
-                  </button>
+              {/* Scanned Success Overlay */}
+              {scannedResult && (
+                <div className="absolute inset-0 bg-[var(--bg-main)]/95 flex flex-col items-center justify-center text-center p-6 space-y-3 font-mono animate-fade-in z-40">
+                  <div className="w-14 h-14 rounded-2xl bg-[var(--success)]/10 border border-[var(--success)]/30 flex items-center justify-center text-[var(--success)]">
+                    <ShieldCheck className="w-8 h-8" weight="bold" />
+                  </div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] font-display">PeerVault Code Detected!</h3>
+                  <p className="text-xs text-[var(--success)] font-bold">Initiating direct WebRTC P2P stream...</p>
                 </div>
-              </div>
-            )}
-
-            {/* Scanned Success Overlay */}
-            {scannedResult && (
-              <div className="absolute inset-0 bg-[var(--bg-main)]/95 flex flex-col items-center justify-center text-center p-6 space-y-3 font-mono animate-fade-in z-40">
-                <div className="w-14 h-14 rounded-2xl bg-[var(--success)]/10 border border-[var(--success)]/30 flex items-center justify-center text-[var(--success)]">
-                  <ShieldCheck className="w-8 h-8" weight="bold" />
-                </div>
-                <h3 className="text-base font-bold text-[var(--text-primary)] font-display">PeerVault Code Detected!</h3>
-                <p className="text-xs text-[var(--success)] font-bold">Initiating direct WebRTC P2P stream...</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Manual Room ID / Link Input Tab */
-          <div className="p-6 space-y-5 bg-[var(--bg-surface)] min-h-[300px] flex flex-col justify-center">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-[var(--text-primary)] font-display flex items-center gap-2">
-                <Key className="w-4 h-4 text-[var(--accent)]" />
-                <span>Enter Room Code or Share Link</span>
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Paste the room code (e.g. <code className="text-[var(--accent)] font-bold">pv_a1b2c3d4</code>) or full share link sent by your peer.
-              </p>
+              )}
             </div>
-
-            <form onSubmit={handleManualSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <input
-                  type="text"
-                  autoFocus
-                  value={manualRoomInput}
-                  onChange={(e) => {
-                    setManualRoomInput(e.target.value);
-                    setManualError(null);
-                  }}
-                  placeholder="pv_a1b2c3d4 or https://peervault.app/receive/..."
-                  className="w-full px-4 py-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-bold selection:bg-[var(--accent)] placeholder:text-[var(--text-secondary)]/50"
-                />
-                {manualError && (
-                  <p className="text-[11px] text-red-400 font-bold flex items-center gap-1">
-                    <Warning className="w-3.5 h-3.5" />
-                    <span>{manualError}</span>
-                  </p>
-                )}
+          ) : (
+            /* Manual Room ID / Link Input Tab */
+            <div className="p-6 space-y-5 bg-[var(--bg-surface)] min-h-[280px] flex flex-col justify-center">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] font-display flex items-center gap-2">
+                  <Key className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Enter Room Code or Share Link</span>
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Paste the room code (e.g. <code className="text-[var(--accent)] font-bold">pv_a1b2c3d4</code>) or full share link sent by your peer.
+                </p>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-              >
-                <Lightning className="w-4 h-4" weight="fill" />
-                <span>Connect & Start Stream</span>
-              </button>
-            </form>
-          </div>
-        )}
+              <form onSubmit={handleManualSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={manualRoomInput}
+                    onChange={(e) => {
+                      setManualRoomInput(e.target.value);
+                      setManualError(null);
+                    }}
+                    placeholder="pv_a1b2c3d4 or https://peervault.app/receive/..."
+                    className="w-full px-4 py-3.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-bold selection:bg-[var(--accent)] placeholder:text-[var(--text-secondary)]/50"
+                  />
+                  {manualError && (
+                    <p className="text-[11px] text-red-400 font-bold flex items-center gap-1">
+                      <Warning className="w-3.5 h-3.5" />
+                      <span>{manualError}</span>
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 transition-opacity glow-amber flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95"
+                >
+                  <Lightning className="w-4 h-4" weight="fill" />
+                  <span>Connect & Start Stream</span>
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-[var(--bg-main)] border-t border-[var(--border-color)]">
+        <div className="p-3 sm:p-4 bg-[var(--bg-main)] border-t border-[var(--border-color)] flex flex-col sm:flex-row gap-2 shrink-0">
           <input
             ref={fileInputRef}
             type="file"
@@ -694,11 +739,24 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           />
 
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full py-3 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/5 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            className="flex-1 py-3 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--accent)]/5 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
           >
             <ImageIcon className="w-4.5 h-4.5 text-[var(--accent)]" weight="bold" />
             <span>Upload QR Image File</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              stopCamera();
+              onClose();
+            }}
+            className="py-3 px-5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+          >
+            <X className="w-4 h-4" weight="bold" />
+            <span>Close</span>
           </button>
         </div>
 
@@ -720,6 +778,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }

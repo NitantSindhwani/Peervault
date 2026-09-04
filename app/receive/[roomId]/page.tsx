@@ -21,6 +21,7 @@ import { TelemetryDashboard } from '@/components/TelemetryDashboard';
 import { useTransfer } from '@/lib/hooks/useTransfer';
 import { createDeliveryAttestation, WebAuthnAttestationResult } from '@/lib/auth/webauthn';
 import { parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
+import { WebSocketSignaler } from '@/lib/webrtc/websocket-signaling';
 import { MediaPlayer } from '@/components/MediaPlayer';
 import { QRScannerModal } from '@/components/QRScannerModal';
 import { formatBytes } from '@/lib/utils/format';
@@ -70,54 +71,51 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
         console.warn('[Receive] Failed parsing URL hash:', err);
       }
 
-      // 2. Resilient signaling API + Global PubSub poll
-      for (let attempt = 0; attempt < 40; attempt++) {
-        if (!active) return;
+      // 2. Resilient multi-relay listener (Nostr global relays + local API poll)
+      let signaler: WebSocketSignaler | null = null;
+      let offerReceived = false;
+
+      const handleOfferFound = (offer: InstantOfferPayload) => {
+        if (!active || offerReceived) return;
+        offerReceived = true;
+        setOfferPayload(offer);
+        if (!offer.passphraseRequired) setIsUnlocked(true);
+        setIsLoadingOffer(false);
+        if (signaler) {
+          signaler.close();
+          signaler = null;
+        }
+      };
+
+      signaler = new WebSocketSignaler(cleanRoomId, (msg: any) => {
+        if (msg?.action === 'submit_offer' && msg?.offer) {
+          handleOfferFound(msg.offer);
+        }
+      });
+      signaler.connect();
+
+      for (let attempt = 0; attempt < 30 && !offerReceived; attempt++) {
+        if (!active) break;
         try {
           const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.offer) {
-              if (active) {
-                setOfferPayload(data.offer);
-                if (!data.offer.passphraseRequired) setIsUnlocked(true);
-                setIsLoadingOffer(false);
-              }
-              return;
-            }
-          }
-
-          // Edge relay fallback (handles multi-isolate serverless deployments)
-          const ntfyRes = await fetch(`https://ntfy.sh/pv_sig_${cleanRoomId}/json?poll=1`);
-          if (ntfyRes.ok) {
-            const text = await ntfyRes.text();
-            const lines = text.trim().split('\n');
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const env = JSON.parse(line);
-                if (env.event === 'message' && env.message) {
-                  const d = typeof env.message === 'string' ? JSON.parse(env.message) : env.message;
-                  if (d?.action === 'submit_offer' && d?.offer) {
-                    if (active) {
-                      setOfferPayload(d.offer);
-                      if (!d.offer.passphraseRequired) setIsUnlocked(true);
-                      setIsLoadingOffer(false);
-                    }
-                    return;
-                  }
-                }
-              } catch {}
+              handleOfferFound(data.offer);
+              break;
             }
           }
         } catch {}
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 400));
       }
 
       // 3. Fallback: unblock UI so recipient can still accept and startReceiver
-      if (active) {
+      if (active && !offerReceived) {
         setIsUnlocked(true);
         setIsLoadingOffer(false);
+      }
+      if (signaler) {
+        signaler.close();
       }
     }
 

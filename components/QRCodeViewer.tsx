@@ -45,17 +45,18 @@ export function QRCodeViewer({ url, size = 260 }: QRCodeViewerProps) {
         {/* White QR area */}
         <div className="relative p-3 bg-white rounded-xl shadow-inner flex items-center justify-center overflow-hidden">
           {/*
-            Render directly using qrcode.react SVG — no external API call,
-            always works offline. Level H = max error correction = easier to
-            scan even in dim light or at an angle.
+            Render directly using qrcode.react SVG — no external API call.
+            Level L creates the lowest matrix density (fewest, largest dots),
+            making it effortless for mobile cameras to scan in a fraction of a second.
           */}
           <QRCodeSVG
             value={scannableUrl}
             size={size}
-            level="M"
-            includeMargin={false}
+            level="L"
+            includeMargin={true}
+            marginSize={2}
             bgColor="#FFFFFF"
-            fgColor="#0D0F14"
+            fgColor="#000000"
           />
         </div>
 
@@ -66,10 +67,15 @@ export function QRCodeViewer({ url, size = 260 }: QRCodeViewerProps) {
         </div>
       </div>
 
-      {/* URL preview — truncated so QR is short */}
-      <div className="text-[10px] text-[var(--text-secondary)] font-mono px-2 text-center max-w-[220px] truncate opacity-60">
-        {scannableUrl}
-      </div>
+      {/* Room code banner */}
+      {scannableUrl.includes('/receive/') && (
+        <div className="text-center space-y-1">
+          <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Room Code</span>
+          <div className="text-xs font-bold text-[var(--accent)] bg-[var(--bg-main)] px-3 py-1 rounded-lg border border-[var(--border-color)] select-all">
+            {scannableUrl.split('/receive/')[1]}
+          </div>
+        </div>
+      )}
 
       {/* Instruction */}
       <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)] text-[11px] text-[var(--text-secondary)] font-bold shadow-sm">

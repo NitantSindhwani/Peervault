@@ -1,33 +1,52 @@
 /**
- * PeerVault Multi-Relay Signaling Engine
+ * PeerVault Censorship-Resistant Multi-Relay Signaling Engine
  *
- * Connects to ALL relay channels simultaneously (not sequentially) so that
- * the first working channel delivers the message immediately.
+ * Utilizes high-performance decentralized Nostr relays + local fast-paths:
+ * - Same-device / cross-tab: BroadcastChannel (< 0.1ms), localStorage (< 1ms)
+ * - Cross-device: Multiple redundant global relays (nos.lol, nostr.mom, eden.nostr.land)
  *
- * Same-device: BroadcastChannel < 0.1ms, localStorage < 1ms
- * Cross-device: socketsbay.com room broadcast (auto-reconnect on drop)
+ * Zero API keys, zero blocked domains, zero serverless isolate dependency.
  */
 
+import { schnorr } from '@noble/curves/secp256k1.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+
+const NOSTR_RELAYS = [
+  'wss://nos.lol',
+  'wss://nostr.mom',
+  'wss://eden.nostr.land',
+];
+
 export class WebSocketSignaler {
-  private sockets: WebSocket[] = [];
+  private sockets: { ws: WebSocket; url: string }[] = [];
   private bc: BroadcastChannel | null = null;
   private roomId: string;
+  private roomTag: string;
   private onMessageCallback: (data: any) => void;
   private isClosed: boolean = false;
   private storageHandler: ((e: StorageEvent) => void) | null = null;
   private relayAttempts = new Map<string, number>();
 
-  // All public relay URLs that broadcast to all clients sharing the same room path.
-  // We intentionally exclude PeerJS here — PeerJS routes by peer ID, NOT by room,
-  // so two clients with different peer IDs never receive each other's messages.
-  private readonly RELAY_URLS: string[];
+  // Ephemeral ECDSA/Schnorr keypair for signing public Nostr relay events
+  private privKey: Uint8Array;
+  private pubKeyHex: string;
 
   constructor(roomId: string, onMessage: (data: any) => void) {
     this.roomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '');
+    this.roomTag = `pv_${this.roomId}`;
     this.onMessageCallback = onMessage;
-    this.RELAY_URLS = [
-      `wss://ntfy.sh/pv_sig_${this.roomId}/ws`,
-    ];
+
+    // Generate random 32-byte private key for this session
+    this.privKey = new Uint8Array(32);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(this.privKey);
+    } else {
+      for (let i = 0; i < 32; i++) this.privKey[i] = Math.floor(Math.random() * 256);
+    }
+    const pubBytes = schnorr.getPublicKey(this.privKey);
+    this.pubKeyHex = Array.from(pubBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   public connect(): void {
@@ -60,78 +79,61 @@ export class WebSocketSignaler {
       window.addEventListener('storage', this.storageHandler);
     }
 
-    // 3. Cross-device: connect to ALL WebSocket room-broadcast relays simultaneously.
-    // Each relay auto-reconnects with exponential backoff if it drops.
-    for (const url of this.RELAY_URLS) {
-      this.connectToRelay(url);
-    }
-
-    // 4. Initial poll to catch any message that arrived before WebSocket opened
-    if (typeof fetch !== 'undefined') {
-      fetch(`https://ntfy.sh/pv_sig_${this.roomId}/json?poll=1`)
-        .then((r) => r.text())
-        .then((text) => {
-          const lines = text.trim().split('\n');
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const envelope = JSON.parse(line);
-              if (envelope.event === 'message' && envelope.message) {
-                const data = typeof envelope.message === 'string' ? JSON.parse(envelope.message) : envelope.message;
-                if (data && (data.roomId === this.roomId || !data.roomId)) {
-                  this.onMessageCallback(data);
-                }
-              }
-            } catch {}
-          }
-        })
-        .catch(() => {});
+    // 3. Cross-device: connect to ALL redundant Nostr relays simultaneously
+    for (const url of NOSTR_RELAYS) {
+      this.connectToNostrRelay(url);
     }
   }
 
-  private connectToRelay(url: string): void {
+  private connectToNostrRelay(url: string): void {
     if (this.isClosed) return;
     const attempt = this.relayAttempts.get(url) || 0;
+
     try {
       const ws = new WebSocket(url);
-      this.sockets.push(ws);
+      const entry = { ws, url };
+      this.sockets.push(entry);
 
       ws.onopen = () => {
-        console.log(`[Signaler] Connected: ${url}`);
+        console.log(`[Signaler] Connected to global relay: ${url}`);
         this.relayAttempts.set(url, 0);
+        // Subscribe to ephemeral signaling events tagged with our room
+        try {
+          const subId = `pv_sub_${this.roomId.substring(0, 8)}`;
+          ws.send(JSON.stringify(['REQ', subId, { kinds: [20000], '#d': [this.roomTag] }]));
+        } catch {}
       };
 
       ws.onmessage = (event) => {
         try {
-          const envelope = JSON.parse(event.data);
-          // Handle ntfy.sh envelope format
-          if (envelope.event === 'message' && envelope.message) {
-            const data = typeof envelope.message === 'string' ? JSON.parse(envelope.message) : envelope.message;
-            if (data && (data.roomId === this.roomId || !data.roomId)) {
-              this.onMessageCallback(data);
+          const parsed = JSON.parse(event.data);
+          // NIP-01 EVENT format: ["EVENT", <subscription_id>, <event_object>]
+          if (Array.isArray(parsed) && parsed[0] === 'EVENT' && parsed[2]?.content) {
+            const ev = parsed[2];
+            // Ignore messages sent by ourselves
+            if (ev.pubkey === this.pubKeyHex) return;
+
+            const payload = JSON.parse(ev.content);
+            if (payload && (payload.roomId === this.roomId || !payload.roomId)) {
+              this.onMessageCallback(payload);
             }
-            return;
-          }
-          // Direct JSON message fallback
-          if (envelope && envelope.roomId === this.roomId) {
-            this.onMessageCallback(envelope);
           }
         } catch {}
       };
 
       ws.onerror = () => {
-        // Silently ignore — onclose will handle cleanup + retry
+        // Silently handled on close
       };
 
       ws.onclose = () => {
-        const idx = this.sockets.indexOf(ws);
+        const idx = this.sockets.indexOf(entry);
         if (idx >= 0) this.sockets.splice(idx, 1);
 
-        // Exponential backoff reconnect (max 30s between attempts, max 10 attempts)
-        if (!this.isClosed && attempt < 10) {
-          const delay = Math.min(30000, 1000 * Math.pow(1.5, attempt));
+        // Auto-reconnect with backoff
+        if (!this.isClosed && attempt < 8) {
+          const delay = Math.min(20000, 1000 * Math.pow(1.5, attempt));
           this.relayAttempts.set(url, attempt + 1);
-          setTimeout(() => this.connectToRelay(url), delay);
+          setTimeout(() => this.connectToNostrRelay(url), delay);
         }
       };
     } catch {}
@@ -152,21 +154,35 @@ export class WebSocketSignaler {
       } catch {}
     }
 
-    // All WebSocket relays (cross-device)
-    const msg = JSON.stringify(fullMessage);
-    for (const ws of this.sockets) {
-      if (ws.readyState === WebSocket.OPEN) {
-        try { ws.send(msg); } catch {}
-      }
-    }
+    // Encode into a cryptographically signed Nostr event (NIP-01 ephemeral kind 20000)
+    try {
+      const content = JSON.stringify(fullMessage);
+      const createdAt = Math.floor(Date.now() / 1000);
+      const tags = [['d', this.roomTag]];
+      const serialized = JSON.stringify([0, this.pubKeyHex, createdAt, 20000, tags, content]);
+      const idBytes = sha256(new TextEncoder().encode(serialized));
+      const id = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const sigBytes = schnorr.sign(idBytes, this.privKey);
+      const sig = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-    // High-reliability edge HTTP pubsub broadcast (works across network boundaries & Cloudflare isolates)
-    if (typeof fetch !== 'undefined') {
-      fetch(`https://ntfy.sh/pv_sig_${this.roomId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: msg,
-      }).catch(() => {});
+      const event = {
+        id,
+        pubkey: this.pubKeyHex,
+        created_at: createdAt,
+        kind: 20000,
+        tags,
+        content,
+        sig,
+      };
+
+      const frame = JSON.stringify(['EVENT', event]);
+      for (const { ws } of this.sockets) {
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(frame); } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn('[Signaler] Failed signing Nostr frame:', err);
     }
   }
 
@@ -180,7 +196,7 @@ export class WebSocketSignaler {
       window.removeEventListener('storage', this.storageHandler);
       this.storageHandler = null;
     }
-    for (const ws of this.sockets) {
+    for (const { ws } of this.sockets) {
       try { ws.close(); } catch {}
     }
     this.sockets = [];

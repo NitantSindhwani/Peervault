@@ -651,36 +651,6 @@ export function useTransfer({
           }
         } catch {}
 
-        // Edge PubSub fallback (resolves answer across multi-isolate / serverless environments)
-        if (!channels.pc.remoteDescription) {
-          try {
-            const ntfyRes = await fetch(`https://ntfy.sh/pv_sig_${generatedRoomId}/json?poll=1`);
-            if (ntfyRes.ok) {
-              const text = await ntfyRes.text();
-              const lines = text.trim().split('\n');
-              for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                  const env = JSON.parse(line);
-                  if (env.event === 'message' && env.message) {
-                    const d = typeof env.message === 'string' ? JSON.parse(env.message) : env.message;
-                    if (d?.action === 'submit_answer' && d?.answer) {
-                      await applyAnswer(d.answer);
-                    }
-                    if (d?.action === 'submit_receiver_candidate' && d?.candidate) {
-                      const key = typeof d.candidate === 'string' ? d.candidate : JSON.stringify(d.candidate);
-                      if (!processedReceiverCandidates.has(key)) {
-                        processedReceiverCandidates.add(key);
-                        await processReceiverCandidate(d.candidate);
-                      }
-                    }
-                  }
-                } catch {}
-              }
-            }
-          } catch {}
-        }
-
         checkChannelsReady();
       }, 250);
 

@@ -1003,7 +1003,7 @@ export function useTransfer({
   /**
    * Start Receiver Transfer Room — Reads Offer INSTANTLY from URL Hash (< 1ms!)
    */
-  const startReceiver = useCallback(async (targetRoomId: string, fileHandle?: any) => {
+  const startReceiver = useCallback(async (targetRoomId: string, fileHandle?: any, providedOffer?: any) => {
     if (receiverStartedRef.current === targetRoomId) {
       console.log('[Transfer] Receiver already started for room:', targetRoomId);
       return;
@@ -1027,7 +1027,7 @@ export function useTransfer({
 
       const cleanRoomId = targetRoomId.split('#')[0];
       addLog('INFO', `Receiver initializing for room: ${cleanRoomId}`);
-      let offerPayload = await parseInstantOfferHash(window.location.hash);
+      let offerPayload = providedOffer || (await parseInstantOfferHash(window.location.hash));
 
       const initialFileName = offerPayload?.fileName || 'SharedFile';
       const initialFileSize = offerPayload?.fileSize || 0;
@@ -1041,12 +1041,9 @@ export function useTransfer({
 
       // ---------- Offer fetch: race HTTP polling vs. real-time relay broadcast ----------
       // The sender re-broadcasts the offer every 1.5s via BroadcastChannel, localStorage,
-      // and WebSocket.  We must listen on ALL of those channels in parallel with the HTTP
-      // poll so that whichever path delivers the offer first wins.  This fixes the
-      // serverless multi-instance problem where HTTP GET hits a different cold instance
-      // than the HTTP POST that stored the offer.
+      // and Nostr WebSocket relays. We listen on ALL channels in parallel.
       if (!offerPayload || !offerPayload.sdp) {
-        addLog('SIGNAL', 'SDP Offer not found in URL. Listening on all channels...');
+        addLog('SIGNAL', 'SDP Offer not in URL or memory. Listening on all channels...');
 
         offerPayload = await new Promise<any>((resolve) => {
           let resolved = false;
@@ -1085,26 +1082,17 @@ export function useTransfer({
           };
           window.addEventListener('storage', onStorage);
 
-          // --- Channel 3: Public WebSocket relay (cross-device) ---
-          const relayUrls = [
-            `wss://socketsbay.com/wss/v2/1/${cleanRoomId}/`,
-          ];
-          const wsRefs: WebSocket[] = [];
-          for (const url of relayUrls) {
-            try {
-              const ws = new WebSocket(url);
-              wsRefs.push(ws);
-              ws.onmessage = (e) => {
-                try {
-                  const d = JSON.parse(e.data);
-                  if (d?.roomId === cleanRoomId && d?.action === 'submit_offer' && d?.offer?.sdp) {
-                    addLog('SIGNAL', 'Got SDP Offer via WebSocket relay!');
-                    tryResolve(d.offer);
-                  }
-                } catch {}
-              };
-            } catch {}
-          }
+          // --- Channel 3: Public Nostr multi-relay (cross-device) ---
+          let relaySignaler: WebSocketSignaler | null = null;
+          try {
+            relaySignaler = new WebSocketSignaler(cleanRoomId, (d: any) => {
+              if (d?.action === 'submit_offer' && d?.offer?.sdp) {
+                addLog('SIGNAL', 'Got SDP Offer via Nostr relay!');
+                tryResolve(d.offer);
+              }
+            });
+            relaySignaler.connect();
+          } catch {}
 
           // --- Channel 4: HTTP polling (may hit different serverless instance) ---
           let httpDone = false;
@@ -1124,7 +1112,6 @@ export function useTransfer({
               await new Promise((r) => setTimeout(r, 200));
             }
             httpDone = true;
-            // If HTTP exhausted and still no offer, resolve null so we can show an error
             if (!resolved) tryResolve(null);
           };
           void httpPoll();
@@ -1134,7 +1121,7 @@ export function useTransfer({
             if (!resolved && !httpDone) return;
             clearInterval(cleanup);
             window.removeEventListener('storage', onStorage);
-            for (const ws of wsRefs) { try { ws.close(); } catch {} }
+            if (relaySignaler) { try { relaySignaler.close(); } catch {} }
             if (bc) { try { bc.close(); } catch {} }
           }, 500);
         });

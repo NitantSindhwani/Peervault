@@ -161,7 +161,7 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
       const fileHandle = await requestDirectSaveHandle();
       setIsUnlocked(true);
       setHasAccepted(true);
-      await startReceiver(roomId, fileHandle);
+      await startReceiver(roomId, fileHandle, offerPayload);
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       setAcceptError(err?.message || 'Could not start receiver');

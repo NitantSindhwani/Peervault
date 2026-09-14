@@ -597,12 +597,13 @@ export function useTransfer({
       };
 
       let lastOfferPushTime = Date.now();
-      const processedReceiverCandidates = new Set<string>();
 
-      // 4. Listen for Recipient's SDP Answer over dual signaling relays (Local API + Global PubSub)
+      // 4. Offer heartbeat — re-publish offer every 2 s until peer connects.
+      //    Nostr (kind 30078, stored) handles real-time answer + ICE delivery via senderSignaler.
+      //    KV-backed /api/signal is a secondary path for clients that can't reach Nostr relays.
       signalPollerRef.current = setInterval(async () => {
-        // Continuously refresh offer registration on signaling cache every 1.5s while waiting for recipient
-        if (!channels.pc.remoteDescription && Date.now() - lastOfferPushTime > 1500) {
+        // Re-broadcast offer so late-joining receivers can pick it up
+        if (!channels.pc.remoteDescription && Date.now() - lastOfferPushTime > 2000) {
           lastOfferPushTime = Date.now();
           sendSignalMessage(generatedRoomId, {
             action: 'submit_offer',
@@ -610,46 +611,42 @@ export function useTransfer({
           });
         }
 
-        const applyAnswer = async (answer: any) => {
-          const ansStr = typeof answer === 'string' ? answer : JSON.stringify(answer);
-          if (lastAppliedAnswerRef.current !== ansStr && !channels.pc.remoteDescription) {
-            lastAppliedAnswerRef.current = ansStr;
-            try {
-              const ansObj = typeof answer === 'string' ? JSON.parse(answer) : answer;
-              await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
-              addLog('SIGNAL', 'Successfully set remote description from recipient SDP Answer');
-              setState('negotiating');
-              // Flush any ICE candidates that arrived before the answer
-              for (const cand of pendingReceiverCandidates) {
-                try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+        // KV fallback: poll /api/signal for answer + receiver candidates in case
+        // the Nostr path didn't deliver (e.g. relay blocked on this network).
+        // This runs at 1 Hz — slow, but guaranteed via Cloudflare KV shared state.
+        if (Date.now() % 1000 < 250) {
+          try {
+            const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
+            if (res.ok) {
+              const data = await res.json();
+
+              if (data.answer && !channels.pc.remoteDescription) {
+                const ansStr = JSON.stringify(data.answer);
+                if (lastAppliedAnswerRef.current !== ansStr) {
+                  lastAppliedAnswerRef.current = ansStr;
+                  try {
+                    const ansObj = typeof data.answer === 'string' ? JSON.parse(data.answer) : data.answer;
+                    await channels.pc.setRemoteDescription(new RTCSessionDescription(ansObj));
+                    addLog('SIGNAL', 'Set remote description from KV fallback answer');
+                    setState('negotiating');
+                    for (const cand of pendingReceiverCandidates) {
+                      try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+                    }
+                    pendingReceiverCandidates.length = 0;
+                  } catch (err: any) {
+                    addLog('ERROR', `setRemoteDescription KV fallback: ${err.message}`);
+                  }
+                }
               }
-              pendingReceiverCandidates.length = 0;
-            } catch (err: any) {
-              addLog('ERROR', `setRemoteDescription answer error: ${err.message}`);
-            }
-          }
-        };
 
-        try {
-          const res = await fetch(`/api/signal?roomId=${generatedRoomId}`);
-          if (res.ok) {
-            const data = await res.json();
-
-            if (data.answer) {
-              await applyAnswer(data.answer);
-            }
-
-            if (data.receiverCandidates && data.receiverCandidates.length > 0) {
-              for (const cand of data.receiverCandidates) {
-                const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
-                if (!processedReceiverCandidates.has(key)) {
-                  processedReceiverCandidates.add(key);
+              if (data.receiverCandidates?.length > 0 && channels.pc.remoteDescription) {
+                for (const cand of data.receiverCandidates) {
                   await processReceiverCandidate(cand);
                 }
               }
             }
-          }
-        } catch {}
+          } catch {}
+        }
 
         checkChannelsReady();
       }, 250);
@@ -1314,27 +1311,22 @@ export function useTransfer({
           sendAnswer();
         }, 2000);
 
-        const processedSenderCandidates = new Set<string>();
-
-        // Listen for Sender ICE Candidates over dual signaling relays
+        // Sender ICE candidates — primary path: Nostr signaler (line above, real-time).
+        // KV fallback at 1 Hz for networks that block WebSocket connections to Nostr relays.
         signalPollerRef.current = setInterval(async () => {
-          try {
-            const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (pc.remoteDescription && data.senderCandidates && data.senderCandidates.length > 0) {
-                for (const cand of data.senderCandidates) {
-                  const key = typeof cand === 'string' ? cand : JSON.stringify(cand);
-                  if (!processedSenderCandidates.has(key)) {
-                    processedSenderCandidates.add(key);
-                    try {
-                      await pc.addIceCandidate(new RTCIceCandidate(cand));
-                    } catch {}
+          if (Date.now() % 1000 < 250) {
+            try {
+              const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
+              if (res.ok) {
+                const data = await res.json();
+                if (pc.remoteDescription && data.senderCandidates?.length > 0) {
+                  for (const cand of data.senderCandidates) {
+                    await processSenderCandidate(cand);
                   }
                 }
               }
-            }
-          } catch {}
+            } catch {}
+          }
         }, 250);
       }
     } catch (err: any) {

@@ -5,32 +5,35 @@
  *
  * Layer 1 — Same-device (< 0.1 ms): BroadcastChannel
  * Layer 2 — Same-device cross-tab (< 1 ms): localStorage storage events
- * Layer 3 — Cross-device real-time: Nostr relays with kind 30078
- *            (Parameterized Replaceable Events — relays STORE these, unlike
- *            ephemeral kind 20000 which is discarded immediately)
+ * Layer 3 — Cross-device real-time: Multi-Relay Nostr Mesh
+ *            - Offers and answers: Kind 30078 (Parameterized Replaceable Events)
+ *              Relays store the latest offer/answer per room, so late joiners
+ *              receive the payload immediately upon subscription.
+ *            - ICE candidates and heartbeats: Kind 20000 (Ephemeral Pub/Sub)
+ *              Broadcast in real-time without overwriting offer/answer.
  *
- * Relay selection: high-uptime, globally distributed, no registration required.
- * Kind 30078 guarantees the last value is retrievable by late joiners via REQ.
+ * Relay selection: High-uptime, globally distributed, zero-registration nodes.
  */
 
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-// Diverse set of high-uptime public Nostr relays
-// Mix of European, US, and Asian nodes for global latency coverage
-// relay.nostr.band excluded — unreachable from some ISPs
 const NOSTR_RELAYS = [
-  'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://nostr.mom',
-  'wss://relay.snort.social',
   'wss://relay.primal.net',
+  'wss://eden.nostr.land',
+  'wss://relay.damus.io',
 ];
 
-// NIP-33 Parameterized Replaceable Event
-// Kind 30078: "Application-specific data" — relays keep the latest value per (pubkey, kind, d-tag)
-// This means a late-joining receiver can REQ and get the sender's last broadcast immediately.
-const NOSTR_KIND = 30078;
+const ACTIONS = [
+  'submit_offer',
+  'submit_answer',
+  'submit_sender_candidate',
+  'submit_receiver_candidate',
+  'ready',
+  'msg',
+];
 
 export class WebSocketSignaler {
   private sockets: { ws: WebSocket; url: string }[] = [];
@@ -41,6 +44,9 @@ export class WebSocketSignaler {
   private isClosed: boolean = false;
   private storageHandler: ((e: StorageEvent) => void) | null = null;
   private relayAttempts = new Map<string, number>();
+
+  // Queue of outbound frames to dispatch as soon as any socket opens
+  private pendingOutboundFrames: string[] = [];
 
   // Ephemeral Schnorr keypair — generated fresh each session
   private privKey: Uint8Array;
@@ -66,7 +72,7 @@ export class WebSocketSignaler {
   public connect(): void {
     if (this.isClosed) return;
 
-    // Layer 1: BroadcastChannel (same-device, instant)
+    // Layer 1: BroadcastChannel (same-device instant)
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         this.bc = new BroadcastChannel(`pv_sig_bc_${this.roomId}`);
@@ -107,21 +113,36 @@ export class WebSocketSignaler {
       this.sockets.push(entry);
 
       ws.onopen = () => {
-        console.log(`[Signaler] Connected to relay: ${url}`);
         this.relayAttempts.set(url, 0);
 
-        // Subscribe using NIP-33 filter: kind 30078 + d-tag matching our room
-        // This fetches the stored (replaceable) events AND subscribes to new ones.
-        // A receiver connecting AFTER the sender published will still get the offer
-        // because relays store the latest event for each (pubkey, kind, d) triple.
+        // Subscribe to ALL matching room tags and action sub-tags
+        const dTags = [
+          this.roomTag,
+          ...ACTIONS.map((a) => `${this.roomTag}_${a}`),
+        ];
+
         try {
           const subId = `pv_${this.roomId.substring(0, 10)}`;
-          ws.send(JSON.stringify([
-            'REQ',
-            subId,
-            { kinds: [NOSTR_KIND], '#d': [this.roomTag], limit: 20 },
-          ]));
+          // Listen for both kind 30078 (stored offer/answer) and kind 20000 (ephemeral candidates)
+          ws.send(
+            JSON.stringify([
+              'REQ',
+              subId,
+              {
+                kinds: [20000, 30078],
+                '#d': dTags,
+                limit: 50,
+              },
+            ])
+          );
         } catch {}
+
+        // Flush any frames that were queued before this socket opened
+        for (const frame of this.pendingOutboundFrames) {
+          try {
+            ws.send(frame);
+          } catch {}
+        }
       };
 
       ws.onmessage = (event) => {
@@ -146,7 +167,7 @@ export class WebSocketSignaler {
         const idx = this.sockets.indexOf(entry);
         if (idx >= 0) this.sockets.splice(idx, 1);
 
-        // Exponential backoff reconnect (up to ~20s)
+        // Exponential backoff reconnect
         if (!this.isClosed && attempt < 8) {
           const delay = Math.min(20000, 1000 * Math.pow(1.5, attempt));
           this.relayAttempts.set(url, attempt + 1);
@@ -161,7 +182,9 @@ export class WebSocketSignaler {
 
     // Layer 1: BroadcastChannel
     if (this.bc) {
-      try { this.bc.postMessage(fullMessage); } catch {}
+      try {
+        this.bc.postMessage(fullMessage);
+      } catch {}
     }
 
     // Layer 2: localStorage
@@ -171,28 +194,53 @@ export class WebSocketSignaler {
       } catch {}
     }
 
-    // Layer 3: Nostr — NIP-33 kind 30078 Parameterized Replaceable Event
+    // Layer 3: Nostr Mesh
     try {
       const content = JSON.stringify(fullMessage);
       const createdAt = Math.floor(Date.now() / 1000);
-      // The 'd' tag scopes the replaceable event to this specific room+action pair.
-      // Using roomTag+action means each action type has its own stored slot on the relay,
-      // so the offer, answer, and candidates don't overwrite each other.
       const actionTag = (payload.action || 'msg').substring(0, 32);
       const dTag = `${this.roomTag}_${actionTag}`;
-      const tags = [['d', dTag]];
-      const serialized = JSON.stringify([0, this.pubKeyHex, createdAt, NOSTR_KIND, tags, content]);
-      const idBytes = sha256(new TextEncoder().encode(serialized));
-      const id = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-      const sigBytes = schnorr.sign(idBytes, this.privKey);
-      const sig = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-      const event = { id, pubkey: this.pubKeyHex, created_at: createdAt, kind: NOSTR_KIND, tags, content, sig };
+      // Tag with both specific action d-tag and general room tag
+      const tags = [
+        ['d', dTag],
+        ['d', this.roomTag],
+        ['t', this.roomTag],
+      ];
+
+      // Offer and answer: kind 30078 (stored by relays for late joiners)
+      // Candidates and other signals: kind 20000 (ephemeral, broadcast in real-time)
+      const kind =
+        actionTag === 'submit_offer' || actionTag === 'submit_answer'
+          ? 30078
+          : 20000;
+
+      const serialized = JSON.stringify([0, this.pubKeyHex, createdAt, kind, tags, content]);
+      const idBytes = sha256(new TextEncoder().encode(serialized));
+      const id = Array.from(idBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const sigBytes = schnorr.sign(idBytes, this.privKey);
+      const sig = Array.from(sigBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const event = { id, pubkey: this.pubKeyHex, created_at: createdAt, kind, tags, content, sig };
       const frame = JSON.stringify(['EVENT', event]);
 
+      // Cache frame so any sockets that open later receive it immediately
+      this.pendingOutboundFrames.push(frame);
+      if (this.pendingOutboundFrames.length > 20) {
+        this.pendingOutboundFrames.shift();
+      }
+
+      let sentCount = 0;
       for (const { ws } of this.sockets) {
         if (ws.readyState === WebSocket.OPEN) {
-          try { ws.send(frame); } catch {}
+          try {
+            ws.send(frame);
+            sentCount++;
+          } catch {}
         }
       }
     } catch (err) {
@@ -202,8 +250,11 @@ export class WebSocketSignaler {
 
   public close(): void {
     this.isClosed = true;
+    this.pendingOutboundFrames = [];
     if (this.bc) {
-      try { this.bc.close(); } catch {}
+      try {
+        this.bc.close();
+      } catch {}
       this.bc = null;
     }
     if (this.storageHandler && typeof window !== 'undefined') {
@@ -211,7 +262,9 @@ export class WebSocketSignaler {
       this.storageHandler = null;
     }
     for (const { ws } of this.sockets) {
-      try { ws.close(); } catch {}
+      try {
+        ws.close();
+      } catch {}
     }
     this.sockets = [];
   }

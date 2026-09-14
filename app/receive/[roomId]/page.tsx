@@ -72,7 +72,6 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
       }
 
       // 2. Resilient multi-relay listener (Nostr global relays + local API poll)
-      let signaler: WebSocketSignaler | null = null;
       let offerReceived = false;
 
       const handleOfferFound = (offer: InstantOfferPayload) => {
@@ -81,21 +80,17 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
         setOfferPayload(offer);
         if (!offer.passphraseRequired) setIsUnlocked(true);
         setIsLoadingOffer(false);
-        if (signaler) {
-          signaler.close();
-          signaler = null;
-        }
       };
 
-      signaler = new WebSocketSignaler(cleanRoomId, (msg: any) => {
+      signalerRef = new WebSocketSignaler(cleanRoomId, (msg: any) => {
         if (msg?.action === 'submit_offer' && msg?.offer) {
           handleOfferFound(msg.offer);
         }
       });
-      signaler.connect();
+      signalerRef.connect();
 
-      for (let attempt = 0; attempt < 30 && !offerReceived; attempt++) {
-        if (!active) break;
+      // Also poll local/edge API in parallel as fallback
+      for (let attempt = 0; attempt < 120 && !offerReceived && active; attempt++) {
         try {
           const res = await fetch(`/api/signal?roomId=${cleanRoomId}`);
           if (res.ok) {
@@ -106,23 +101,18 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
             }
           }
         } catch {}
-        await new Promise((r) => setTimeout(r, 400));
-      }
-
-      // 3. Fallback: unblock UI so recipient can still accept and startReceiver
-      if (active && !offerReceived) {
-        setIsUnlocked(true);
-        setIsLoadingOffer(false);
-      }
-      if (signaler) {
-        signaler.close();
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
+    let signalerRef: WebSocketSignaler | null = null;
     checkOffer();
 
     return () => {
       active = false;
+      if (signalerRef) {
+        try { signalerRef.close(); } catch {}
+      }
     };
   }, [roomId]);
 

@@ -118,8 +118,8 @@ export class DiskWriter {
       }
     }
 
-    // Try OPFS (Origin Private File System) for ultra-fast NVMe storage if no user direct fileHandle is provided
-    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
+    // Try OPFS (Origin Private File System) only for huge files (>= 128 MB) when no user direct fileHandle is provided
+    if (this.tier !== 'memory_blob' && typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
       try {
         const root = await navigator.storage.getDirectory();
         const cleanName = this.fileName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'stream.bin';
@@ -170,7 +170,9 @@ export class DiskWriter {
         this.writtenSize += chunk.byteLength;
         return;
       } catch (err) {
-        throw new Error(`Direct file write failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+        console.warn('[DiskWriter] Direct write failed, falling back to memory storage:', err);
+        this.writableStream = null;
+        this.tier = 'memory_blob';
       }
     }
 

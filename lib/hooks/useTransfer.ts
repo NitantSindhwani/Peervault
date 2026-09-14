@@ -508,11 +508,12 @@ export function useTransfer({
       setShareUrl(generatedShareUrl);
       setState('waiting_peer');
       
-      // Also log actual file size now
-      addLog('INFO', `File ready: ${fileToStream.name} (${(fileToStream.size / (1024 * 1024)).toFixed(2)} MB)`);
+      const estChunks = Math.ceil(fileToStream.size / DATA_CHUNK_SIZE);
+      addLog('INFO', `File ready: ${fileToStream.name} (${(fileToStream.size / (1024 * 1024)).toFixed(2)} MB, ${estChunks} leaves)`);
       setTelemetry((prev) => ({
         ...prev,
         totalBytes: fileToStream.size,
+        totalChunks: estChunks,
       }));
 
       // Submit offer to signaling relays (Local API + Global PubSub)
@@ -1490,7 +1491,18 @@ export function useTransfer({
             if (Number.isInteger(msg.chunkSize) && msg.chunkSize >= 16 * 1024 && msg.chunkSize <= 1024 * 1024) {
               nominalChunkSize = msg.chunkSize;
             }
-            syncExpectedTotals();
+            const progress = syncExpectedTotals();
+            setTelemetry((prev) => ({
+              ...prev,
+              totalBytes: progress.totalBytes,
+              totalChunks: progress.totalChunks,
+              chunkSizeBytes: progress.chunkSize,
+            }));
+            try {
+              if (controlChannel.readyState === 'open') {
+                controlChannel.send(JSON.stringify({ type: 'metadata_ack' }));
+              }
+            } catch {}
           } else if (msg.type === 'bbr_ping') {
             try {
               controlChannel.send(JSON.stringify({ type: 'bbr_pong', ts: msg.ts }));
@@ -1568,7 +1580,8 @@ export function useTransfer({
           try {
             if (controlChannel && controlChannel.readyState === 'open') {
               const isFinalChunk = progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks;
-              if (progress.receivedChunks % 16 === 0 || isFinalChunk) {
+              const ackInterval = progress.totalChunks <= 32 ? 2 : 8;
+              if (progress.receivedChunks % ackInterval === 0 || isFinalChunk) {
                 controlChannel.send(JSON.stringify({ type: 'ack', chunkIndex }));
               }
             }

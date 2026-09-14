@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
 
 const MAX_SIGNAL_BODY_BYTES = 128 * 1024;
 // Signal state TTL: 2 hours in seconds (Cloudflare KV), in ms for in-memory fallback

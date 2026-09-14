@@ -736,22 +736,26 @@ export function useTransfer({
       
       let compressionSampled = false;
 
-      // Disable compression for known incompressible formats
-      if (
+      const ext = (inputFile.name.split('.').pop() || '').toLowerCase();
+      const isMediaOrArchive =
         inputFile.type.startsWith('video/') ||
         inputFile.type.startsWith('audio/') ||
-        inputFile.type === 'image/jpeg' ||
-        inputFile.type === 'image/png' ||
-        inputFile.type === 'image/webp' ||
-        inputFile.type === 'application/zip' ||
-        inputFile.type === 'application/x-rar-compressed' ||
-        inputFile.type === 'application/x-7z-compressed' ||
-        inputFile.name.match(/\.(zip|rar|7z|gz|tar\.gz|mp4|mkv|mov|avi|mp3)$/i)
-      ) {
+        inputFile.type.startsWith('image/') ||
+        inputFile.type.startsWith('font/') ||
+        inputFile.size > 20 * 1024 * 1024 ||
+        [
+          'webm', 'mp4', 'mkv', 'mov', 'avi', 'wmv', 'flv', 'm4v', '3gp', 'ts', 'mts', 'm2ts', 'vob', 'ogv',
+          'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus',
+          'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'heic', 'heif', 'avif',
+          'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'dmg', 'iso',
+          'pdf', 'docx', 'xlsx', 'pptx', 'apk', 'exe', 'bin'
+        ].includes(ext);
+
+      if (isMediaOrArchive) {
         compressionEnabledRef.current = false;
-        addLog('INFO', 'File type is incompressible. Auto-disabling chunk compression.');
+        addLog('INFO', `Incompressible format (${ext || inputFile.type || 'media'}). Compression disabled for maximum throughput.`);
       } else {
-        addLog('INFO', 'File type appears compressible. Real-time compression enabled.');
+        addLog('INFO', 'Compressible data format detected. Real-time compression enabled.');
       }
 
       const preBufferQueue: Array<{ chunkIndex: number; payloadBytes: number; packet: Uint8Array }> = [];
@@ -1138,6 +1142,9 @@ export function useTransfer({
       }
 
       if (fileSize > 0) {
+        writer.setFileSize(fileSize);
+        receiverProgressRef.current.totalBytes = fileSize;
+        receiverProgressRef.current.totalChunks = Math.ceil(fileSize / DATA_CHUNK_SIZE);
         const estChunks = Math.ceil(fileSize / DATA_CHUNK_SIZE);
         setTelemetry((prev) => ({
           ...prev,
@@ -1487,6 +1494,7 @@ export function useTransfer({
             }
             if (msg.fileSize && msg.fileSize > 0) {
               actualFileSize = msg.fileSize;
+              diskWriterRef.current?.setFileSize(msg.fileSize);
             }
             if (Number.isInteger(msg.chunkSize) && msg.chunkSize >= 16 * 1024 && msg.chunkSize <= 1024 * 1024) {
               nominalChunkSize = msg.chunkSize;
@@ -1509,7 +1517,10 @@ export function useTransfer({
             } catch {}
           } else if (msg.type === 'transfer_complete') {
             addLog('CHANNEL', 'Sender confirmed transfer_complete.');
-            if (msg.fileSize && msg.fileSize > 0) actualFileSize = msg.fileSize;
+            if (msg.fileSize && msg.fileSize > 0) {
+              actualFileSize = msg.fileSize;
+              diskWriterRef.current?.setFileSize(msg.fileSize);
+            }
             if (Number.isInteger(msg.totalChunks) && msg.totalChunks > 0) {
               nominalChunkSize = actualFileSize > 0 && msg.totalChunks > 0 ? Math.ceil(actualFileSize / msg.totalChunks) : nominalChunkSize;
             }

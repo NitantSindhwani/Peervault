@@ -56,8 +56,8 @@ export class DiskWriter {
     this.mimeType = mimeType || this.inferMimeType(fileName);
     this.streamId = `pv_str_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Memory Blob fallback for small files (< 128 MB)
-    if (fileSize < 128 * 1024 * 1024) {
+    // Memory Blob fallback for small/medium files (< 256 MB)
+    if (fileSize < 256 * 1024 * 1024) {
       this.tier = 'memory_blob';
       this.useDBPaging = false;
     }
@@ -69,12 +69,28 @@ export class DiskWriter {
       case 'webm': return 'video/webm';
       case 'mp4': return 'video/mp4';
       case 'mkv': return 'video/x-matroska';
+      case 'mov': return 'video/quicktime';
+      case 'avi': return 'video/x-msvideo';
+      case 'wmv': return 'video/x-ms-wmv';
+      case 'flv': return 'video/x-flv';
+      case 'm4v': return 'video/x-m4v';
+      case '3gp': return 'video/3gpp';
+      case 'ts': return 'video/mp2t';
       case 'mp3': return 'audio/mpeg';
       case 'wav': return 'audio/wav';
+      case 'ogg': return 'audio/ogg';
+      case 'm4a': return 'audio/x-m4a';
+      case 'flac': return 'audio/flac';
+      case 'aac': return 'audio/aac';
+      case 'opus': return 'audio/opus';
       case 'jpg': case 'jpeg': return 'image/jpeg';
       case 'png': return 'image/png';
       case 'gif': return 'image/gif';
       case 'webp': return 'image/webp';
+      case 'svg': return 'image/svg+xml';
+      case 'heic': return 'image/heic';
+      case 'heif': return 'image/heif';
+      case 'avif': return 'image/avif';
       case 'pdf': return 'application/pdf';
       case 'zip': return 'application/zip';
       case 'json': return 'application/json';
@@ -99,8 +115,31 @@ export class DiskWriter {
   }
 
   public setFileName(name: string, mime?: string): void {
-    if (name) this.fileName = name;
-    if (mime) this.mimeType = mime;
+    if (name) {
+      this.fileName = name;
+    }
+    const inferred = name ? this.inferMimeType(name) : '';
+    if (mime && mime !== 'application/octet-stream' && mime.trim() !== '') {
+      this.mimeType = mime;
+    } else if (inferred && inferred !== 'application/octet-stream') {
+      this.mimeType = inferred;
+    } else if (mime) {
+      this.mimeType = mime;
+    }
+  }
+
+  public setFileSize(size: number): void {
+    if (size > 0) {
+      this.fileSize = size;
+      this.totalSize = size;
+      if (size < 256 * 1024 * 1024 && !this.fileHandle) {
+        this.tier = 'memory_blob';
+        this.useDBPaging = false;
+      } else if (!this.fileHandle) {
+        this.tier = 'indexeddb_paging';
+        this.useDBPaging = true;
+      }
+    }
   }
 
   public async init(fileHandle?: any): Promise<boolean> {
@@ -112,14 +151,21 @@ export class DiskWriter {
         this.useDBPaging = false;
         return true;
       } catch (err) {
-        console.warn('[DiskWriter] Direct file handle createWritable failed, falling back to OPFS/IndexedDB:', err);
+        console.warn('[DiskWriter] Direct file handle createWritable failed, falling back to memory/IndexedDB:', err);
         this.fileHandle = null;
         this.writableStream = null;
       }
     }
 
-    // Try OPFS (Origin Private File System) only for huge files (>= 128 MB) when no user direct fileHandle is provided
-    if (this.tier !== 'memory_blob' && typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
+    // Default to ultra-fast zero-copy memory_blob for files under 256MB
+    if (this.fileSize < 256 * 1024 * 1024) {
+      this.tier = 'memory_blob';
+      this.useDBPaging = false;
+      return true;
+    }
+
+    // Try OPFS for huge files (>= 256 MB) when supported
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
       try {
         const root = await navigator.storage.getDirectory();
         const cleanName = this.fileName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'stream.bin';
@@ -132,7 +178,7 @@ export class DiskWriter {
           return true;
         }
       } catch (opfsErr) {
-        console.warn('[DiskWriter] OPFS initialization failed, using IndexedDB/memory fallback:', opfsErr);
+        console.warn('[DiskWriter] OPFS initialization failed, using IndexedDB fallback:', opfsErr);
         this.opfsFileHandle = null;
         this.writableStream = null;
       }
@@ -268,14 +314,13 @@ export class DiskWriter {
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction(STORE_NAME, 'readonly');
           const store = tx.objectStore(STORE_NAME);
-          const request = store.openCursor();
+          const index = store.index('streamId');
+          const request = index.openCursor(IDBKeyRange.only(this.streamId));
           
           request.onsuccess = (e: any) => {
             const cursor = e.target.result;
             if (cursor) {
-              if (cursor.value.streamId === this.streamId) {
-                chunkMap.set(cursor.value.chunkIndex, cursor.value.data);
-              }
+              chunkMap.set(cursor.value.chunkIndex, cursor.value.data);
               cursor.continue();
             } else {
               resolve();

@@ -467,9 +467,10 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
                 <div className="pt-2 flex justify-center">
                   {(isVideo || isAudio) && (
                     <MediaPlayer
+                      key={receivedBlobUrl}
                       src={receivedBlobUrl}
                       fileName={fileName}
-                      fileSize={telemetry.totalBytes}
+                      fileSize={fileSizeBytes}
                       type={isVideo ? 'video' : 'audio'}
                     />
                   )}

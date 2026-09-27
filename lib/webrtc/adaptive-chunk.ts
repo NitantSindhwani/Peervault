@@ -7,9 +7,9 @@
  */
 
 export class AdaptiveChunkScaler {
-  private currentChunkSize: number = 64 * 1024; // 64KB
-  private minChunkSize: number = 32 * 1024 - 16;      // 32KB min (fallback on congestion)
-  private maxChunkSize: number = 128 * 1024 - 16;     // 128KB max
+  private currentChunkSize: number = 256 * 1024;      // 256KB — matches DATA_CHUNK_SIZE
+  private minChunkSize: number = 128 * 1024 - 16;     // 128KB min (don't go too small; header overhead hurts)
+  private maxChunkSize: number = 512 * 1024 - 16;     // 512KB max (fast LAN / loopback)
   private stableWindowCount: number = 0;
   private lossCount: number = 0;
 

@@ -13,11 +13,12 @@ export interface WindowMetrics {
 }
 
 export class BackpressureController {
-  private windowSize: number = 64; // Increased to 64 to allow a larger in-flight pipeline
+  private windowSize: number = 2048; // Large window — ACK-based throttling was the #1 speed bottleneck
   private unacknowledged: Set<number> = new Set();
-  private bufferedAmountLowThreshold: number = 4 * 1024 * 1024; // 4MB
-  private maxBufferedAmount: number = 16 * 1024 * 1024;   // 16MB per channel
-  private minBufferedAmount: number = 4 * 1024 * 1024;    // 4MB
+  private bufferedAmountLowThreshold: number = 8 * 1024 * 1024; // 8MB
+  private maxBufferedAmount: number = 64 * 1024 * 1024;  // 64MB per channel (modern browsers handle this)
+  private minBufferedAmount: number = 8 * 1024 * 1024;   // 8MB
+
   private isPaused: boolean = false;
   private onPauseStateChange?: (isPaused: boolean) => void;
 
@@ -84,7 +85,7 @@ export class BackpressureController {
    * Dynamic window adjustment based on disk write speeds
    */
   public adjustWindowSize(newSize: number): void {
-    this.windowSize = Math.max(64, Math.min(8192, newSize));
+    this.windowSize = Math.max(256, Math.min(65536, newSize));
   }
 
   private setPaused(paused: boolean): void {

@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_SIGNAL_BODY_BYTES = 128 * 1024;
+const MAX_SIGNAL_BODY_BYTES = 512 * 1024;
 // Signal state TTL: 2 hours in seconds (Cloudflare KV), in ms for in-memory fallback
 const TTL_SECONDS = 7200;
 const TTL_MS = TTL_SECONDS * 1000;

@@ -36,7 +36,7 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
     iceServers: config?.iceServers || DEFAULT_ICE_SERVERS,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 20,
   });
 
   // Channel 0: Control (ordered, reliable)
@@ -46,11 +46,12 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   controlChannel.binaryType = 'arraybuffer';
 
   // Dynamic Hardware-Scaled Parallel DataChannels
+  // maxRetransmits: 0 + ordered: false = max throughput (no stalls waiting for retransmits)
   const numChannels = config?.channelCount || (typeof window !== 'undefined' ? Math.min(12, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2))) : 2);
   const dataChannels: RTCDataChannel[] = [];
 
   for (let i = 0; i < numChannels; i++) {
-    const ch = pc.createDataChannel(`data_${i}`, { ordered: false });
+    const ch = pc.createDataChannel(`data_${i}`, { ordered: false, maxRetransmits: 0 });
     ch.binaryType = 'arraybuffer';
     dataChannels.push(ch);
   }
@@ -82,7 +83,7 @@ export function createReceiverPeerConnection(
     iceServers: config?.iceServers || DEFAULT_ICE_SERVERS,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 20,
   });
 
   const channels: Partial<PeerChannels> = { pc, dataChannels: [] };

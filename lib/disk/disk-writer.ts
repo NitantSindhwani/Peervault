@@ -56,8 +56,8 @@ export class DiskWriter {
     this.mimeType = mimeType || this.inferMimeType(fileName);
     this.streamId = `pv_str_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Memory Blob fallback for small/medium files (< 256 MB)
-    if (fileSize < 256 * 1024 * 1024) {
+    // Memory Blob fallback for files ≤ 1GB — fast in-memory assembly with zero disk overhead
+    if (fileSize <= 1024 * 1024 * 1024) {
       this.tier = 'memory_blob';
       this.useDBPaging = false;
     }
@@ -132,12 +132,15 @@ export class DiskWriter {
     if (size > 0) {
       this.fileSize = size;
       this.totalSize = size;
-      if (size < 256 * 1024 * 1024 && !this.fileHandle) {
-        this.tier = 'memory_blob';
-        this.useDBPaging = false;
-      } else if (!this.fileHandle) {
-        this.tier = 'indexeddb_paging';
-        this.useDBPaging = true;
+      // Only downgrade/upgrade tier if we haven't already opened a writable stream
+      if (!this.writableStream && !this.fileHandle) {
+        if (size <= 1024 * 1024 * 1024) { // ≤ 1GB — use memory blob (fast assembly)
+          this.tier = 'memory_blob';
+          this.useDBPaging = false;
+        } else {
+          this.tier = 'indexeddb_paging';
+          this.useDBPaging = true;
+        }
       }
     }
   }
@@ -157,8 +160,8 @@ export class DiskWriter {
       }
     }
 
-    // Default to ultra-fast zero-copy memory_blob for files under 256MB
-    if (this.fileSize < 256 * 1024 * 1024) {
+    // Default to ultra-fast zero-copy memory_blob for files under 1GB
+    if (this.fileSize <= 1024 * 1024 * 1024) {
       this.tier = 'memory_blob';
       this.useDBPaging = false;
       return true;
@@ -202,7 +205,7 @@ export class DiskWriter {
    * Write a chunk to storage (Direct FS, IndexedDB Paging, or Memory)
    */
   public async writeChunk(chunk: ArrayBuffer, offset: number, explicitChunkIndex?: number): Promise<void> {
-    const NOMINAL_CHUNK_SIZE = 131072; // 128KB — must match DATA_CHUNK_SIZE in useTransfer
+    const NOMINAL_CHUNK_SIZE = 262144; // 256KB — must match DATA_CHUNK_SIZE in useTransfer
     const chunkIndex = explicitChunkIndex !== undefined ? explicitChunkIndex : Math.floor(offset / NOMINAL_CHUNK_SIZE);
 
     // Direct File System Access API streaming for massive 10GB–100GB files

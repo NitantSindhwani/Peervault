@@ -62,8 +62,8 @@ export interface LiveTelemetryState {
   chunkSizeBytes: number;
 }
 
-const DATA_CHUNK_SIZE = 128 * 1024;  // 128 KB – optimal for WebRTC throughput
-const DATA_CHANNEL_COUNT = 8;
+const DATA_CHUNK_SIZE = 256 * 1024;  // 256 KB – higher throughput on modern networks
+const DATA_CHANNEL_COUNT = 12;
 const TELEMETRY_SAMPLE_MS = 200;
 
 interface ReceiverProgress {
@@ -729,11 +729,10 @@ export function useTransfer({
     try {
       addLog('INFO', `Starting High-Speed WebRTC P2P Stream (${totalChunksEstimate} chunks)`);
       
-      // A single small reader avoids the old race where many 64 MB fills ran at
-      // once, overwhelming the JS heap and queuing data out of order.
-      const PRE_BUFFER_SIZE = 128;
-      const BURST_SIZE = 64;
-      
+      // PRE_BUFFER_SIZE: how many pre-encoded packets to keep ready (more = smoother burst feeding)
+      const PRE_BUFFER_SIZE = 512;
+
+
       let compressionSampled = false;
 
       const ext = (inputFile.name.split('.').pop() || '').toLowerCase();
@@ -826,8 +825,7 @@ export function useTransfer({
           const currentOffset = senderProgress.offset;
           const currentChunkIndex = senderProgress.chunkIndex;
           const bytesDiff = Math.max(0, currentOffset - lastByteCountRef.current);
-          if (bytesDiff === 0 && timeDiff < 1.0) return;
-          const currentSpeed = bytesDiff / timeDiff;
+          const currentSpeed = timeDiff > 0 ? bytesDiff / timeDiff : 0;
           lastByteCountRef.current = currentOffset;
           lastSampleTimeRef.current = now;
 
@@ -877,13 +875,37 @@ export function useTransfer({
           }
         }
 
-        // A bounded burst leaves the event loop time to drain SCTP buffers.
+        // High-throughput burst: rotate across ALL open channels in round-robin.
+        // BURST_SIZE controls how many packets we send per event-loop iteration.
+        const BURST_SIZE = 512;
         let burstSent = 0;
+        const numChannels = openChannels.length;
         while (preBufferQueue.length > 0 && burstSent < BURST_SIZE) {
-          const targetChannel = openChannels[senderProgress.chunkIndex % openChannels.length];
+          const targetChannel = openChannels[senderProgress.chunkIndex % numChannels];
           const canSend = backpressure.canSend(targetChannel);
           if (!canSend) {
-            break;
+            // Try an alternate channel — one may be ready while another is backpressured
+            let found = false;
+            for (let ci = 1; ci < numChannels; ci++) {
+              const altChannel = openChannels[(senderProgress.chunkIndex + ci) % numChannels];
+              if (backpressure.canSend(altChannel)) {
+                const item = preBufferQueue.shift()!;
+                try {
+                  altChannel.send(item.packet as any);
+                  backpressure.registerSentChunk(item.chunkIndex);
+                  senderProgress.offset += item.payloadBytes;
+                  senderProgress.chunkIndex++;
+                  burstSent++;
+                  found = true;
+                } catch (sendErr) {
+                  preBufferQueue.unshift(item);
+                  await new Promise((r) => setTimeout(r, 2));
+                }
+                break;
+              }
+            }
+            if (!found) break;
+            continue;
           }
 
           const item = preBufferQueue.shift()!;
@@ -900,14 +922,22 @@ export function useTransfer({
             break;
           }
         }
-        // ALWAYS yield the JS event loop. If we don't yield, the main thread freezes,
-        // WebRTC cannot flush its SCTP buffers, ACKs get blocked, and speed drops to 0.
-        await new Promise((r) => setTimeout(r, burstSent === 0 ? 5 : 1));
+
+        // Yield the event loop so WebRTC can flush SCTP send buffers and process ACKs.
+        // queueMicrotask costs ~0.01ms; setTimeout(1) adds 1ms+ per iteration = 10× speed penalty.
+        if (burstSent === 0) {
+          // All channels backpressured — give receiver time to drain
+          await new Promise((r) => setTimeout(r, 5));
+        } else {
+          // Fast cooperative yield — lets SCTP flush without burning a timer slot
+          await new Promise<void>((r) => queueMicrotask(r));
+        }
 
         // Replenish in the background; fillPreBuffer prevents overlapping reads.
         if (!isReadingDone && preBufferQueue.length < PRE_BUFFER_SIZE / 2) {
           void fillPreBuffer();
         }
+
 
         // Save session checkpoint to IndexedDB for auto-resume on refresh
         if (senderProgress.chunkIndex % 50 === 0 && roomId) {

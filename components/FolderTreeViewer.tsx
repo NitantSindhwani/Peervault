@@ -10,7 +10,6 @@ import {
   Square,
   MagnifyingGlass,
   Funnel,
-  Check,
   X,
 } from '@phosphor-icons/react';
 import { FileTreeNode } from '@/lib/utils/folder-walker';
@@ -186,7 +185,7 @@ export function FolderTreeViewer({ nodes, onSelectionChange }: FolderTreeViewerP
           ))
         ) : (
           <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
-            No files match "{searchQuery}" in category "{activeCategory}".
+            No files match &quot;{searchQuery}&quot; in category &quot;{activeCategory}&quot;.
           </div>
         )}
       </div>

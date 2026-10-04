@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { generateECDHKeyPair, deriveSharedSymmetricKey } from '@/lib/crypto/crypto-engine';
+import {
+  generateECDHKeyPair,
+  deriveKeyFromPassphrase,
+  encryptChunk,
+  decryptChunk,
+} from '@/lib/crypto/crypto-engine';
 import { createSenderPeerConnection, createReceiverPeerConnection, PeerChannels } from '@/lib/webrtc/peer-connection';
 import { BBRPacer } from '@/lib/webrtc/bbr-pacer';
 import { BackpressureController } from '@/lib/webrtc/backpressure';
@@ -8,13 +13,9 @@ import { WorkerPool } from '@/lib/worker/worker-pool';
 import { KeepAliveManager } from '@/lib/keep-alive/keep-alive';
 import { MerkleTree } from '@/lib/crypto/merkle';
 import { DiskWriter } from '@/lib/disk/disk-writer';
-import { formatBytes, formatSpeed, formatETA } from '@/lib/utils/format';
+import { formatETA } from '@/lib/utils/format';
 import { saveResumeSession, getResumeSession, removeResumeSession } from '@/lib/resume/ResumeStore';
-import { createInstantOfferHash, parseInstantOfferHash, InstantOfferPayload } from '@/lib/webrtc/url-signaling';
-import { generateKyberKeyPair, encapsulateKyberSecret, decapsulateKyberSecret, bytesToHex, hexToBytes } from '@/lib/crypto/kyber';
-import { ForwardErrorCorrection } from '@/lib/crypto/fec';
-import { LocalSubnetDiscovery } from '@/lib/webrtc/local-discovery';
-import { SwarmMeshSeeder } from '@/lib/webrtc/swarm-mesh';
+import { createInstantOfferHash, parseInstantOfferHash } from '@/lib/webrtc/url-signaling';
 
 import { WebSocketSignaler } from '@/lib/webrtc/websocket-signaling';
 import { compressChunk, decompressChunk } from '@/lib/crypto/compression';
@@ -75,12 +76,12 @@ interface ReceiverProgress {
 }
 
 export function useTransfer({
-  role,
+  role: _role,
   roomId: initialRoomId,
   file,
   passphrase,
-  useOpaque = false,
-  enableStaging = true,
+  useOpaque: _useOpaque = false,
+  enableStaging: _enableStaging = true,
   ttlHours = 24,
   maxDownloads = 1,
 }: UseTransferOptions) {
@@ -109,7 +110,6 @@ export function useTransfer({
 
   const peerChannelsRef = useRef<PeerChannels | null>(null);
   const sessionKeyRef = useRef<CryptoKey | null>(null);
-  const rawSessionKeyRef = useRef<ArrayBuffer | null>(null);
   const localKeyPairRef = useRef<CryptoKeyPair | null>(null);
   const bbrRef = useRef<BBRPacer | null>(null);
   const backpressureRef = useRef<BackpressureController | null>(null);
@@ -137,7 +137,7 @@ export function useTransfer({
 
   const speedHistoryRef = useRef<number[]>([]);
   const lastByteCountRef = useRef<number>(0);
-  const lastSampleTimeRef = useRef<number>(Date.now());
+  const lastSampleTimeRef = useRef<number>(0);
   const telemetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectionTypeRef = useRef<string>('direct_host');
   const statsPollerRef = useRef<any>(null);
@@ -381,6 +381,16 @@ export function useTransfer({
       const generatedRoomId = `pv_${Math.random().toString(36).substring(2, 10)}`;
       addLog('INFO', `Generated room ID: ${generatedRoomId}`);
 
+      // Derive AES-256-GCM application key if passphrase is provided
+      if (passphrase) {
+        const enc = new TextEncoder();
+        const salt = enc.encode(`peervault-salt-${generatedRoomId}`);
+        sessionKeyRef.current = await deriveKeyFromPassphrase(passphrase, salt);
+        addLog('INFO', 'Derived AES-256-GCM application key from passphrase.');
+      } else {
+        sessionKeyRef.current = null;
+      }
+
       const channels = createSenderPeerConnection({ channelCount: DATA_CHANNEL_COUNT });
       peerChannelsRef.current = channels;
       startConnectionStatsPoller(channels.pc);
@@ -582,6 +592,12 @@ export function useTransfer({
             if (data.compressionSupported === false) {
               compressionEnabledRef.current = false;
               addLog('INFO', 'Receiver does not support CompressionStream. Disabling compression.');
+            }
+            if (Array.isArray(data.completedChunks) && data.completedChunks.length > 0) {
+              for (const idx of data.completedChunks) {
+                backpressureRef.current?.handleAck(idx);
+              }
+              addLog('INFO', `Receiver holds ${data.completedChunks.length} chunks from prior session — fast forwarding.`);
             }
             addLog('CHANNEL', 'Receiver packet handlers are ready.');
             checkChannelsReady();
@@ -793,13 +809,27 @@ export function useTransfer({
               }
             }
 
-            // Header: index + fixed chunk size + 8 reserved bytes. The receiver
-            // needs the nominal size to position the final short chunk correctly.
+            let isEncrypted = 0;
+            if (sessionKeyRef.current) {
+              try {
+                const { ciphertext, iv } = await encryptChunk(buffer, sessionKeyRef.current);
+                const combined = new Uint8Array(12 + ciphertext.byteLength);
+                combined.set(iv, 0);
+                combined.set(new Uint8Array(ciphertext), 12);
+                buffer = combined.buffer;
+                isEncrypted = 1;
+              } catch (encErr) {
+                console.warn('[Transfer] Chunk encryption error:', encErr);
+              }
+            }
+
+            // Header: index + fixed chunk size + isCompressed + isEncrypted + reserved bytes.
             const header = new ArrayBuffer(16);
             const headerView = new DataView(header);
             headerView.setUint32(0, cIdx, false);
             headerView.setUint32(4, chunkSize, false);
             headerView.setUint8(8, isCompressed);
+            headerView.setUint8(9, isEncrypted);
 
             const packet = new Uint8Array(header.byteLength + buffer.byteLength);
             packet.set(new Uint8Array(header), 0);
@@ -1201,6 +1231,16 @@ export function useTransfer({
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
+      // Derive AES-256-GCM application key if passphrase is provided
+      if (passphrase) {
+        const enc = new TextEncoder();
+        const salt = enc.encode(`peervault-salt-${cleanRoomId}`);
+        sessionKeyRef.current = await deriveKeyFromPassphrase(passphrase, salt);
+        addLog('INFO', 'Receiver derived AES-256-GCM application key from passphrase.');
+      } else {
+        sessionKeyRef.current = null;
+      }
+
       // 6. WebRTC path — only if we have a valid SDP offer
       if (offerPayload?.sdp) {
         let currentPacketHandler: any = null;
@@ -1241,7 +1281,8 @@ export function useTransfer({
                 activeData,
                 fileName,
                 fileSize,
-                channels.dataChannels
+                channels.dataChannels,
+                cleanRoomId
               );
               if (channels.dataChannels) {
                 for (const ch of channels.dataChannels) {
@@ -1383,7 +1424,8 @@ export function useTransfer({
     dataChannel: RTCDataChannel,
     fileName: string,
     fileSize: number,
-    dataChannels?: RTCDataChannel[]
+    dataChannels?: RTCDataChannel[],
+    cleanRoomId?: string
   ) => {
     let actualFileSize = fileSize;
     let actualFileName = fileName;
@@ -1589,7 +1631,22 @@ export function useTransfer({
         const chunkIndex = packetView.getUint32(0, false);
         const packetChunkSize = packetView.getUint32(4, false);
         const isCompressed = packetView.getUint8(8);
+        const isEncrypted = packetView.getUint8(9);
         let payload = rawPacket.slice(16);
+
+        if (isEncrypted === 1) {
+          if (!sessionKeyRef.current && passphrase && cleanRoomId) {
+            const enc = new TextEncoder();
+            const salt = enc.encode(`peervault-salt-${cleanRoomId}`);
+            sessionKeyRef.current = await deriveKeyFromPassphrase(passphrase, salt);
+          }
+          if (!sessionKeyRef.current) {
+            throw new Error(`Encrypted chunk ${chunkIndex} received but decryption key not found.`);
+          }
+          const iv = new Uint8Array(payload.slice(0, 12));
+          const ciphertext = payload.slice(12);
+          payload = await decryptChunk(ciphertext, sessionKeyRef.current, iv);
+        }
 
         if (isCompressed === 1) {
           try {
@@ -1683,13 +1740,21 @@ export function useTransfer({
     }
 
     let readyAnnounced = false;
-    const announceReady = () => {
+    const announceReady = async () => {
       if (readyAnnounced || controlChannel.readyState !== 'open') return;
       try {
         const hasCompression = typeof window !== 'undefined' && typeof window.DecompressionStream !== 'undefined';
+        const previousSession = cleanRoomId ? await getResumeSession(cleanRoomId) : null;
+        const resumedBitmap = previousSession?.completedChunksBitmap || [];
+        if (resumedBitmap.length > 0) {
+          resumedBitmap.forEach((idx) => receivedChunkSet.add(idx));
+          addLog('INFO', `Restored ${resumedBitmap.length} previously received chunks from IndexedDB.`);
+        }
+
         controlChannel.send(JSON.stringify({ 
           type: 'receiver_ready',
-          compressionSupported: hasCompression
+          compressionSupported: hasCompression,
+          completedChunks: resumedBitmap
         }));
         for (const channel of targetDataChannels) {
           if (channel.readyState === 'open') sendDataChannelReady(channel);
@@ -1716,9 +1781,11 @@ export function useTransfer({
   };
 
   useEffect(() => {
+    const poller = signalPollerRef.current;
+    const stagingTimer = stagingFallbackTimerRef.current;
     return () => {
-      if (signalPollerRef.current) clearInterval(signalPollerRef.current);
-      if (stagingFallbackTimerRef.current) clearTimeout(stagingFallbackTimerRef.current);
+      if (poller) clearInterval(poller);
+      if (stagingTimer) clearTimeout(stagingTimer);
     };
   }, []);
 
@@ -1731,6 +1798,8 @@ export function useTransfer({
     receivedBlobUrl,
     receivedFileName,
     receivedSavedToDisk,
+    logs,
+    clearLogs,
     startSender,
     startReceiver,
     resetTransfer,

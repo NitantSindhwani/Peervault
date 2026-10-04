@@ -17,21 +17,28 @@ export function SpeedGraph({ data = [], height = 40, color = 'var(--accent)' }: 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = (canvas.width = canvas.parentElement?.clientWidth || 200);
-    canvas.height = height;
+    const dpr = window.devicePixelRatio || 1;
+    const logicalWidth = canvas.parentElement?.clientWidth || 200;
+    canvas.width = logicalWidth * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, logicalWidth, height);
 
     if (data.length < 2) return;
 
     const maxVal = Math.max(...data, 10);
-    const stepX = width / (data.length - 1);
+    const stepX = logicalWidth / (data.length - 1);
+
+    // Resolve stroke color
+    const strokeColor = color.startsWith('var(') ? '#EA8C28' : color;
 
     // Draw sparkline curve
     ctx.beginPath();
-    ctx.strokeStyle = '#ea8c28';
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
 
     data.forEach((val, i) => {
       const x = i * stepX;
@@ -46,12 +53,14 @@ export function SpeedGraph({ data = [], height = 40, color = 'var(--accent)' }: 
     ctx.stroke();
 
     // Fill area under curve
-    ctx.lineTo(width, height);
+    ctx.lineTo(logicalWidth, height);
     ctx.lineTo(0, height);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(234, 140, 40, 0.1)';
+    ctx.fillStyle = strokeColor.startsWith('#')
+      ? `${strokeColor}1A` // ~10% opacity in hex
+      : 'rgba(234, 140, 40, 0.1)';
     ctx.fill();
-  }, [data, height]);
+  }, [data, height, color]);
 
   return (
     <div className="w-full overflow-hidden">

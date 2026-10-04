@@ -5,17 +5,15 @@ import Link from 'next/link';
 import { 
   Lightning, 
   ArrowRight, 
-  Cpu, 
   CheckCircle, 
   UploadSimple, 
   FileVideo, 
   FileArchive, 
-  ShieldCheck,
-  UserCheck,
-  ArrowsClockwise
+  UserCheck, 
+  ArrowsClockwise 
 } from '@phosphor-icons/react';
-import { motion, useSpring, AnimatePresence } from 'motion/react';
-import { ShinyText, BlurText, CountUp } from '@/components/TextAnimations';
+import { motion, useSpring } from 'motion/react';
+import { BlurText } from '@/components/TextAnimations';
 import { AuroraBackground } from '@/components/AuroraBackground';
 import { MagneticButton } from '@/components/MagneticButton';
 import { soundEngine } from '@/lib/audio/sound-engine';

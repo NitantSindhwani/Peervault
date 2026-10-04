@@ -40,14 +40,23 @@ export async function sendTestWebhook(url: string): Promise<{ success: boolean; 
       };
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch('/api/webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ url, payload }),
     });
 
     if (!res.ok) {
-      return { success: false, error: `Webhook rejected with status ${res.status}: ${res.statusText}` };
+      // Fallback direct request
+      const direct = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!direct.ok) {
+        return { success: false, error: `Webhook rejected with status ${direct.status}` };
+      }
+      return { success: true };
     }
     return { success: true };
   } catch (err: any) {
@@ -90,11 +99,18 @@ export async function dispatchTransferNotification(event: TransferEvent): Promis
       };
 
   try {
-    await fetch(url, {
+    const res = await fetch('/api/webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ url, payload }),
     });
+    if (!res.ok) {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
   } catch (err) {
     console.warn('[Webhook] Failed to dispatch transfer alert:', err);
   }

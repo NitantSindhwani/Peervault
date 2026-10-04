@@ -4,9 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Lightning, ShareNetwork, Copy, ChartLineUp, LockKey, List, X, SpeakerHigh, SpeakerSimpleSlash, QrCode } from '@phosphor-icons/react';
-import { motion, AnimatePresence, useScroll, useSpring } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { soundEngine } from '@/lib/audio/sound-engine';
-import { ShinyText } from '@/components/TextAnimations';
 import { MagneticButton } from '@/components/MagneticButton';
 import { QRScannerModal } from '@/components/QRScannerModal';
 

@@ -76,12 +76,19 @@ export async function createDeliveryAttestation(
       .join('');
     const clientDataJSON = new TextDecoder().decode(rawResponse.clientDataJSON);
 
+    const sigBuffer = (rawResponse as any).signature || (rawResponse as any).attestationObject;
+    const signatureHex = sigBuffer && sigBuffer.byteLength > 0
+      ? Array.from(new Uint8Array(sigBuffer))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+      : credIdHex;
+
     return {
       credentialId: credIdHex,
       authenticatorDataHex: authDataHex,
-      signatureHex: `webauthn_sig_${credIdHex.substring(0, 16)}`,
+      signatureHex,
       clientDataJSON,
-      verified: true,
+      verified: Boolean(credIdHex && authDataHex),
     };
   } catch (err) {
     console.warn('[WebAuthn] Attestation skipped or cancelled:', err);

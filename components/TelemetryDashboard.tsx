@@ -1,6 +1,4 @@
-'use client';
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Gauge, GitFork } from '@phosphor-icons/react';
 import { SpeedGraph } from './SpeedGraph';
 import { NodeTopologyCanvas } from './NodeTopologyCanvas';
@@ -28,6 +26,7 @@ export interface TelemetryDashboardProps {
 }
 
 export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboardProps) {
+  const hw = useMemo(() => getHardwareCapabilities(), []);
   const getRealMemoryMb = () => {
     if (typeof window !== 'undefined' && (window.performance as any)?.memory?.usedJSHeapSize) {
       return parseFloat((((window.performance as any).memory.usedJSHeapSize) / (1024 * 1024)).toFixed(1));
@@ -133,15 +132,10 @@ export function TelemetryDashboard({ mock = true, liveData }: TelemetryDashboard
         </div>
 
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          {(() => {
-            const hw = getHardwareCapabilities();
-            return (
-              <span className="px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30 font-semibold flex items-center gap-1.5 text-[11px]">
-                <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-                {hw.hardwareTierName} Engine • {hw.cpuCores} Threads • {hw.gpuName} • {hw.ramGB}GB RAM ({hw.ramBudgetMB >= 1024 ? `${(hw.ramBudgetMB / 1024).toFixed(1)}GB` : `${hw.ramBudgetMB}MB`} RAM Budget)
-              </span>
-            );
-          })()}
+          <span className="px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30 font-semibold flex items-center gap-1.5 text-[11px]">
+            <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+            {hw.hardwareTierName} Engine • {hw.cpuCores} Threads • {hw.gpuName} • {hw.ramGB}GB RAM ({hw.ramBudgetMB >= 1024 ? `${(hw.ramBudgetMB / 1024).toFixed(1)}GB` : `${hw.ramBudgetMB}MB`} RAM Budget)
+          </span>
           <span className="px-2.5 py-1 rounded-full bg-[var(--success)]/10 text-[var(--success)] border border-[var(--success)]/30 font-semibold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
             {telemetry.connectionType}

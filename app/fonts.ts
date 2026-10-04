@@ -1,13 +1,19 @@
-import { Orbitron, JetBrains_Mono } from 'next/font/google';
+import { Orbitron, JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 
 export const orbitron = Orbitron({
   subsets: ['latin'],
-  weight: ['700', '900'],
   variable: '--font-display',
+  display: 'swap',
 });
 
 export const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  weight: ['400', '500', '700'],
   variable: '--font-mono',
+  display: 'swap',
+});
+
+export const jakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
 });

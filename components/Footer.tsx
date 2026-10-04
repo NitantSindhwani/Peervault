@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { ShieldCheck, LockKey } from '@phosphor-icons/react';
-import { ShinyText } from '@/components/TextAnimations';
 
 export function Footer() {
   return (
@@ -46,7 +45,7 @@ export function Footer() {
             <ul className="space-y-2 text-xs font-mono text-[var(--text-secondary)]">
               <li className="flex items-center gap-1.5 text-[var(--success)] font-bold">
                 <ShieldCheck className="w-3.5 h-3.5 text-[var(--success)] animate-pulse" />
-                <ShinyText text="100% Private (E2EE)" className="text-[var(--success)] font-bold" />
+                <span className="text-[var(--success)] font-bold">100% Private (E2EE)</span>
               </li>
               <li className="hover:text-[var(--text-primary)] transition-colors duration-200">AES-256-GCM Hardware Encrypted</li>
               <li className="hover:text-[var(--text-primary)] transition-colors duration-200">ML-KEM-1024 Post-Quantum Proof</li>

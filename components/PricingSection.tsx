@@ -1,7 +1,6 @@
 'use client';
 
 import { Check, X, Lightning, ShieldCheck, Heart } from '@phosphor-icons/react';
-import Link from 'next/link';
 
 export function PricingSection() {
   const comparisons = [

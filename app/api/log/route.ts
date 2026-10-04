@@ -25,10 +25,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { event, roomId, fileName, fileSize, progressPercent, speedBytesPerSec } = body;
 
-    const ip =
+    const rawIp =
       request.headers.get('x-forwarded-for')?.split(',')[0] ||
       request.headers.get('x-real-ip') ||
       '127.0.0.1';
+
+    // Anonymize IP address for Zero-Knowledge privacy (e.g. 192.168.x.x)
+    const ip = rawIp.includes('.')
+      ? rawIp.split('.').slice(0, 2).join('.') + '.x.x'
+      : rawIp.substring(0, 8) + '::xxxx';
 
     const country = request.headers.get('x-vercel-ip-country') || request.headers.get('cf-ipcountry') || 'US';
     const city = request.headers.get('x-vercel-ip-city') || 'Localhost';

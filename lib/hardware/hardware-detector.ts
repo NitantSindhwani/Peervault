@@ -57,7 +57,7 @@ export function getHardwareCapabilities(): HardwareCapabilities {
 
   // 3. RAM Budget Calculation with Cross-Platform Safeguards
   const reportedRAM = (navigator as any).deviceMemory || (isMobile ? 4 : 8);
-  let ramGB = reportedRAM;
+  const ramGB = reportedRAM;
 
   // High-Throughput Safe RAM Allocation Budget Matrix
   let ramBudgetMB = 3584;

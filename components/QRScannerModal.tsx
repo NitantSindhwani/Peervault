@@ -14,8 +14,6 @@ import {
   ArrowsClockwise,
   Key,
   Lightning,
-  Sparkle,
-  Check,
 } from '@phosphor-icons/react';
 import jsQR from 'jsqr';
 import { soundEngine } from '@/lib/audio/sound-engine';
@@ -33,6 +31,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const animFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const scanFrameRef = useRef<() => void>(() => {});
 
   // Tab mode: 'camera' | 'manual'
   const [activeTab, setActiveTab] = useState<'camera' | 'manual'>('camera');
@@ -78,7 +77,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
       try {
         // @ts-ignore
         barcodeDetectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
-      } catch (e) {
+      } catch {
         barcodeDetectorRef.current = null;
       }
     }
@@ -150,7 +149,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
 
       // Parse and navigate to PeerVault room or URL
       try {
-        let cleanText = codeText.trim();
+        const cleanText = codeText.trim();
         if (cleanText.includes('/receive/') || cleanText.includes('#offer=')) {
           const urlObj = new URL(cleanText, window.location.origin);
           const destination = urlObj.pathname + urlObj.hash;
@@ -182,7 +181,7 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
   // High-Performance Hybrid Decoding Loop (Native BarcodeDetector -> Downscaled jsQR attemptBoth)
   const scanFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
-      animFrameRef.current = requestAnimationFrame(scanFrame);
+      animFrameRef.current = requestAnimationFrame(() => scanFrameRef.current());
       return;
     }
 
@@ -236,8 +235,12 @@ export function QRScannerModal({ isOpen, onClose, onScanSuccess }: QRScannerModa
       }
     }
 
-    animFrameRef.current = requestAnimationFrame(scanFrame);
+    animFrameRef.current = requestAnimationFrame(() => scanFrameRef.current());
   }, [handleDecodedCode]);
+
+  useEffect(() => {
+    scanFrameRef.current = scanFrame;
+  }, [scanFrame]);
 
   // Start Camera Stream with Robust Constraint Fallbacks & Multi-Lens Selection
   const startCamera = useCallback(async (targetFacingMode = facingMode, targetDeviceId = selectedDeviceId) => {

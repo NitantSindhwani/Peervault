@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { orbitron, jetbrainsMono } from './fonts';
+import { orbitron, jetbrainsMono, jakartaSans } from './fonts';
 import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
@@ -17,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${orbitron.variable} ${jetbrainsMono.variable} font-mono antialiased bg-[var(--bg-main)] text-[var(--text-primary)] min-h-screen flex flex-col`}>
+      <body className={`${orbitron.variable} ${jetbrainsMono.variable} ${jakartaSans.variable} font-sans antialiased bg-[var(--bg-main)] text-[var(--text-primary)] min-h-screen flex flex-col`}>
         <Navbar />
         <main className="flex-1">
           {children}

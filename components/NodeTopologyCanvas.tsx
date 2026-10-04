@@ -20,6 +20,11 @@ export function NodeTopologyCanvas({
   active?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const metricsRef = useRef({ speedBytesPerSec, rttMs, active });
+
+  useEffect(() => {
+    metricsRef.current = { speedBytesPerSec, rttMs, active };
+  }, [speedBytesPerSec, rttMs, active]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -29,55 +34,59 @@ export function NodeTopologyCanvas({
     if (!ctx) return;
 
     let animationFrameId: number;
-    let width = (canvas.width = canvas.parentElement?.clientWidth || 800);
-    let height = (canvas.height = 220);
+    let logicalWidth = canvas.parentElement?.clientWidth || 800;
+    const logicalHeight = 220;
 
-    const handleResize = () => {
-      if (canvas && canvas.parentElement) {
-        width = canvas.width = canvas.parentElement.clientWidth;
-        height = canvas.height = 220;
-      }
+    const setCanvasDimensions = () => {
+      if (!canvas || !canvas.parentElement) return;
+      logicalWidth = canvas.parentElement.clientWidth;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = logicalWidth * dpr;
+      canvas.height = logicalHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-    window.addEventListener('resize', handleResize);
 
-    // Sender node on left, Receiver node on right
-    const sender = { x: width * 0.18, y: height * 0.5 };
-    const receiver = { x: width * 0.82, y: height * 0.5 };
+    setCanvasDimensions();
+    window.addEventListener('resize', setCanvasDimensions);
 
     // Particles array
-    const particles: Particle[] = [];
     const particleCount = 28;
+    const particles: Particle[] = [];
 
     for (let i = 0; i < particleCount; i++) {
       particles.push({
-        x: sender.x,
-        y: sender.y,
+        x: logicalWidth * 0.18,
+        y: logicalHeight * 0.5,
         progress: Math.random(),
-        speed: 0.006 + Math.random() * 0.008,
-        size: 2.5 + Math.random() * 2,
+        speed: 0.005 + Math.random() * 0.007,
+        size: 2.2 + Math.random() * 1.8,
       });
     }
 
     let pulse = 0;
 
     const render = () => {
-      ctx.clearRect(0, 0, width, height);
-      pulse += 0.04;
+      const { speedBytesPerSec: currentSpeed, rttMs: currentRtt, active: isCurrentlyActive } = metricsRef.current;
+      ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+      pulse += 0.035;
+
+      const sender = { x: logicalWidth * 0.18, y: logicalHeight * 0.5 };
+      const receiver = { x: logicalWidth * 0.82, y: logicalHeight * 0.5 };
+      const controlY = logicalHeight * 0.14;
 
       // 1. Draw Connection Arc Line
-      const controlY = height * 0.15;
       ctx.beginPath();
       ctx.moveTo(sender.x, sender.y);
-      ctx.quadraticCurveTo(width * 0.5, controlY, receiver.x, receiver.y);
-      ctx.strokeStyle = 'rgba(234, 140, 40, 0.25)';
+      ctx.quadraticCurveTo(logicalWidth * 0.5, controlY, receiver.x, receiver.y);
+      ctx.strokeStyle = isCurrentlyActive ? 'rgba(234, 140, 40, 0.35)' : 'rgba(156, 163, 175, 0.15)';
       ctx.lineWidth = 2;
       ctx.stroke();
 
       // 2. Draw Secondary Ground Line
       ctx.beginPath();
-      ctx.moveTo(sender.x, sender.y + 15);
-      ctx.lineTo(receiver.x, receiver.y + 15);
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.15)';
+      ctx.moveTo(sender.x, sender.y + 16);
+      ctx.lineTo(receiver.x, receiver.y + 16);
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.18)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 6]);
       ctx.stroke();
@@ -85,74 +94,76 @@ export function NodeTopologyCanvas({
 
       // 3. Render Kinetic Packet Particles traversing the Quadratic Curve
       particles.forEach((p) => {
-        if (active) {
-          p.progress += p.speed * (speedBytesPerSec > 0 ? 1.2 : 0.4);
+        if (isCurrentlyActive) {
+          p.progress += p.speed * (currentSpeed > 0 ? 1.4 : 0.4);
           if (p.progress >= 1) p.progress = 0;
         }
 
         const t = p.progress;
-        // Bezier curve point calculation
-        p.x = (1 - t) * (1 - t) * sender.x + 2 * (1 - t) * t * (width * 0.5) + t * t * receiver.x;
+        p.x = (1 - t) * (1 - t) * sender.x + 2 * (1 - t) * t * (logicalWidth * 0.5) + t * t * receiver.x;
         p.y = (1 - t) * (1 - t) * sender.y + 2 * (1 - t) * t * controlY + t * t * receiver.y;
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = active ? 'rgba(234, 140, 40, 0.9)' : 'rgba(156, 163, 175, 0.4)';
-        ctx.shadowColor = '#EA8C28';
-        ctx.shadowBlur = active ? 8 : 0;
+        ctx.fillStyle = isCurrentlyActive ? 'rgba(234, 140, 40, 0.95)' : 'rgba(156, 163, 175, 0.3)';
+        if (isCurrentlyActive) {
+          ctx.shadowColor = '#EA8C28';
+          ctx.shadowBlur = 6;
+        }
         ctx.fill();
         ctx.shadowBlur = 0;
       });
 
       // 4. Render Sender Node (Left Pulse Ring)
-      const senderPulseRadius = 24 + Math.sin(pulse) * 4;
+      const senderPulseRadius = 22 + Math.sin(pulse) * 4;
       ctx.beginPath();
       ctx.arc(sender.x, sender.y, senderPulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(234, 140, 40, 0.3)';
+      ctx.strokeStyle = 'rgba(234, 140, 40, 0.35)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(sender.x, sender.y, 10, 0, Math.PI * 2);
+      ctx.arc(sender.x, sender.y, 9, 0, Math.PI * 2);
       ctx.fillStyle = '#EA8C28';
       ctx.fill();
 
-      ctx.font = '11px monospace';
-      ctx.fillStyle = '#EA8C28';
+      ctx.font = '600 11px var(--font-mono, monospace)';
+      ctx.fillStyle = '#F3F4F6';
       ctx.textAlign = 'center';
-      ctx.fillText('Sender Node (Local)', sender.x, sender.y + 36);
+      ctx.fillText('Sender Node (Local)', sender.x, sender.y + 34);
 
       // 5. Render Receiver Node (Right Pulse Ring)
-      const receiverPulseRadius = 24 + Math.cos(pulse) * 4;
+      const receiverPulseRadius = 22 + Math.cos(pulse) * 4;
       ctx.beginPath();
       ctx.arc(receiver.x, receiver.y, receiverPulseRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(receiver.x, receiver.y, 10, 0, Math.PI * 2);
+      ctx.arc(receiver.x, receiver.y, 9, 0, Math.PI * 2);
       ctx.fillStyle = '#22C55E';
       ctx.fill();
 
-      ctx.font = '11px monospace';
-      ctx.fillStyle = '#22C55E';
-      ctx.fillText(`Receiver Node (${rttMs} ms)`, receiver.x, receiver.y + 36);
+      ctx.font = '600 11px var(--font-mono, monospace)';
+      ctx.fillStyle = '#F3F4F6';
+      ctx.fillText(`Receiver Node (${Math.round(currentRtt)} ms)`, receiver.x, receiver.y + 34);
 
       // 6. Draw Center Flow Speed Badge
-      const midX = width * 0.5;
-      const midY = height * 0.32;
-      ctx.fillStyle = 'rgba(13, 15, 20, 0.85)';
-      ctx.strokeStyle = 'rgba(234, 140, 40, 0.4)';
+      const midX = logicalWidth * 0.5;
+      const midY = logicalHeight * 0.30;
+      ctx.fillStyle = 'rgba(12, 14, 18, 0.92)';
+      ctx.strokeStyle = isCurrentlyActive ? 'rgba(234, 140, 40, 0.5)' : 'rgba(75, 85, 99, 0.3)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(midX - 70, midY - 14, 140, 28, 8);
+      ctx.roundRect(midX - 75, midY - 14, 150, 28, 8);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 11px monospace';
-      ctx.fillText(`${(speedBytesPerSec / (1024 * 1024)).toFixed(1)} MB/s Stream`, midX, midY + 4);
+      ctx.font = 'bold 11px var(--font-mono, monospace)';
+      const mbps = (currentSpeed / (1024 * 1024)).toFixed(1);
+      ctx.fillText(`${mbps} MB/s Direct Stream`, midX, midY + 4);
 
       animationFrameId = requestAnimationFrame(render);
     };
@@ -160,10 +171,10 @@ export function NodeTopologyCanvas({
     render();
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', setCanvasDimensions);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [speedBytesPerSec, rttMs, active]);
+  }, []);
 
   return (
     <div className="w-full relative bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl p-4 overflow-hidden shadow-2xl">

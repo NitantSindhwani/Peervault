@@ -234,12 +234,10 @@ export class WebSocketSignaler {
         this.pendingOutboundFrames.shift();
       }
 
-      let sentCount = 0;
       for (const { ws } of this.sockets) {
         if (ws.readyState === WebSocket.OPEN) {
           try {
             ws.send(frame);
-            sentCount++;
           } catch {}
         }
       }

@@ -9,7 +9,6 @@ import {
   ToggleLeft,
   ToggleRight,
   UsersThree,
-  Lightning,
   PaperPlaneTilt,
   CheckCircle,
   WarningCircle,

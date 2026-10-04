@@ -2,8 +2,7 @@
 
 import { QRCodeViewer } from '@/components/QRCodeViewer';
 
-import { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   UploadSimple,
   ShieldCheck,
@@ -13,7 +12,6 @@ import {
   Folder,
   Timer,
   ArrowsClockwise,
-  LockKey,
   CheckCircle,
   FileZip,
   Warning,
@@ -66,23 +64,10 @@ export default function SendPage() {
     setDirectoryNodes(null);
   };
 
-  // PWA Native File Launch Handler
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'launchQueue' in window) {
-      (window as any).launchQueue.setConsumer(async (launchParams: any) => {
-        if (launchParams.files && launchParams.files.length > 0) {
-          const handle = launchParams.files[0];
-          const file = await handle.getFile();
-          handleBatchFileSelect([file]);
-        }
-      });
-    }
-  }, []);
-
   /**
    * INSTANT File & Multi-File Batch Selection — Zero RAM load, Zero waiting!
    */
-  const handleBatchFileSelect = (files: FileList | File[]) => {
+  const handleBatchFileSelect = useCallback((files: FileList | File[]) => {
     const filesArray = Array.from(files);
     if (filesArray.length === 0) return;
 
@@ -126,7 +111,20 @@ export default function SendPage() {
       Object.defineProperty(syntheticFile, 'size', { value: totalBatchSize, configurable: true, writable: true });
       setSelectedFile(syntheticFile);
     }
-  };
+  }, [resetTransfer]);
+
+  // PWA Native File Launch Handler
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'launchQueue' in window) {
+      (window as any).launchQueue.setConsumer(async (launchParams: any) => {
+        if (launchParams.files && launchParams.files.length > 0) {
+          const handle = launchParams.files[0];
+          const file = await handle.getFile();
+          handleBatchFileSelect([file]);
+        }
+      });
+    }
+  }, [handleBatchFileSelect]);
 
   const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -256,12 +254,15 @@ export default function SendPage() {
               }}
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center min-h-[320px] ${
+              className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center min-h-[340px] relative overflow-hidden bg-grid-pattern ${
                 isDragOver
                   ? 'border-[var(--accent)] bg-[var(--accent)]/5 glow-amber'
                   : 'border-[var(--border-color)] bg-[var(--bg-surface)] hover:border-[var(--accent)]'
               }`}
             >
+              {/* Subtle ambient spotlight */}
+              <div className="absolute inset-0 bg-radial from-[var(--accent)]/[0.03] via-transparent to-transparent pointer-events-none" />
+
               <input
                 type="file"
                 multiple
@@ -284,8 +285,21 @@ export default function SendPage() {
                 onChange={handleFolderSelect}
               />
 
-              <div className="space-y-4 flex flex-col items-center">
-                <div className="w-16 h-16 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center text-[var(--accent)]">
+              <div className="space-y-4 flex flex-col items-center relative z-10">
+                {/* Tech Badges */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-[var(--text-secondary)]">
+                  <span className="px-2 py-0.5 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)]">
+                    AES-256-GCM
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)]">
+                    Zero Cloud Delay
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-[var(--bg-main)] border border-[var(--border-color)]">
+                    12 SCTP Lanes
+                  </span>
+                </div>
+
+                <div className="w-16 h-16 rounded-2xl bg-[var(--bg-main)] border border-[var(--border-color)] flex items-center justify-center text-[var(--accent)] shadow-inner">
                   <UploadSimple className="w-8 h-8" weight="bold" />
                 </div>
                 <div>
@@ -294,7 +308,7 @@ export default function SendPage() {
                   </h3>
                   <p className="text-xs font-mono text-[var(--text-secondary)] mt-1">
                     {selectedFile
-                      ? `${formatBytes(selectedFile.size)} • Ready for Instant Stream`
+                      ? `${formatBytes(selectedFile.size)} • Ready for Instant Direct P2P Stream`
                       : 'Drop single files, multiple loose files, or whole folders'}
                   </p>
                 </div>
@@ -302,13 +316,13 @@ export default function SendPage() {
                 <div className="flex gap-3 pt-2">
                   <label
                     htmlFor="file-input"
-                    className="px-4 py-2.5 rounded-lg bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 cursor-pointer shadow-lg"
+                    className="px-5 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-main)] font-mono text-xs font-bold hover:opacity-90 cursor-pointer shadow-lg glow-amber transition-all"
                   >
                     Select File(s)
                   </label>
                   <label
                     htmlFor="folder-input"
-                    className="px-4 py-2.5 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--accent)] hover:border-[var(--accent)] cursor-pointer flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-xl bg-[var(--bg-main)] border border-[var(--border-color)] font-mono text-xs text-[var(--accent)] hover:border-[var(--accent)] cursor-pointer flex items-center gap-1.5 transition-all"
                   >
                     <Folder className="w-4 h-4 text-amber-400" weight="fill" />
                     Select Folder
@@ -560,7 +574,28 @@ export default function SendPage() {
           </div>
 
           {/* Status Indicator Card */}
-          {state === 'waiting_peer' ? (
+          {state === 'error' ? (
+            <div className="bg-[var(--bg-surface)] border border-red-500/40 rounded-2xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto border border-red-500/30">
+                <Warning className="w-6 h-6" weight="bold" />
+              </div>
+              <div className="space-y-1 font-mono">
+                <h4 className="text-base font-bold text-[var(--text-primary)] font-display">
+                  Transfer Connection Issue
+                </h4>
+                <p className="text-xs text-red-400 max-w-md mx-auto">
+                  {errorMsg || 'Connection timed out or failed to reach recipient. Please try again.'}
+                </p>
+                <button
+                  onClick={handleSendAnotherFile}
+                  className="mt-3 px-4 py-2 rounded-lg bg-[var(--bg-main)] border border-[var(--border-color)] text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent)] cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <ArrowsClockwise className="w-3.5 h-3.5" />
+                  <span>Try Again</span>
+                </button>
+              </div>
+            </div>
+          ) : state === 'waiting_peer' ? (
             <div className="bg-[var(--bg-surface)] border border-[var(--accent)]/30 rounded-2xl p-8 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center mx-auto border border-[var(--accent)]/30 animate-pulse">
                 <Lightning className="w-6 h-6" weight="fill" />

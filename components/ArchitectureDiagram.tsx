@@ -1,15 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import {
   FileArrowUp,
   ShareNetwork,
   DownloadSimple,
   CheckCircle,
   Lightning,
-  ShieldCheck,
-  ArrowRight,
 } from '@phosphor-icons/react';
 
 export function ArchitectureDiagram() {

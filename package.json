@@ -6,15 +6,15 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "test:e2e": "playwright test --config=test-suite/playwright.config.ts"
   },
   "dependencies": {
     "@cloudflare/opaque-ts": "^0.7.5",
     "@noble/hashes": "^2.2.0",
     "@noble/post-quantum": "^0.6.1",
     "@phosphor-icons/react": "^2.1.10",
-    "@supabase/ssr": "^0.12.3",
-    "gsap": "^3.15.0",
     "jsqr": "^1.4.0",
     "jszip": "^3.10.1",
     "motion": "^12.42.2",
@@ -26,6 +26,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

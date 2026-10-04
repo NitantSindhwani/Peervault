@@ -14,7 +14,6 @@ import {
   Image as ImageIcon,
   MusicNotes,
   FileText,
-  QrCode,
   ArrowsClockwise,
 } from '@phosphor-icons/react';
 import { TelemetryDashboard } from '@/components/TelemetryDashboard';
@@ -26,7 +25,7 @@ import { MediaPlayer } from '@/components/MediaPlayer';
 import { QRScannerModal } from '@/components/QRScannerModal';
 import { formatBytes } from '@/lib/utils/format';
 
-export default function ReceivePage({ params }: { params?: Promise<{ roomId: string }> }) {
+export default function ReceivePage() {
   const routeParams = useParams();
   const roomId = (routeParams?.roomId as string) || '';
   const [passphrase, setPassphrase] = useState('');
@@ -224,17 +223,19 @@ export default function ReceivePage({ params }: { params?: Promise<{ roomId: str
   const isCompleted = state === 'complete';
   const isError = state === 'error';
 
-  if (typeof window !== 'undefined') {
-    (window as any).__RECEIVER_DEBUG = {
-      state,
-      isLoadingOffer,
-      offerPayload,
-      isUnlocked,
-      hasAccepted,
-      fileName,
-      fileSizeBytes,
-    };
-  }
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__RECEIVER_DEBUG = {
+        state,
+        isLoadingOffer,
+        offerPayload,
+        isUnlocked,
+        hasAccepted,
+        fileName,
+        fileSizeBytes,
+      };
+    }
+  }, [state, isLoadingOffer, offerPayload, isUnlocked, hasAccepted, fileName, fileSizeBytes]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-12 font-mono">

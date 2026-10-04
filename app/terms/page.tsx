@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck, LockKey, ArrowLeft, Scales, Warning } from '@phosphor-icons/react';
+import { ArrowLeft, Scales, Warning } from '@phosphor-icons/react';
 
 export default function TermsOfServicePage() {
   return (
@@ -32,10 +32,10 @@ export default function TermsOfServicePage() {
       <div className="bg-[var(--bg-surface)] border border-[var(--accent)]/40 rounded-2xl p-6 space-y-3 shadow-xl">
         <div className="flex items-center gap-2 text-[var(--accent)] font-bold text-sm font-display">
           <Warning className="w-5 h-5" weight="fill" />
-          <span>Important Notice: Software Provided "AS IS" Without Warranty</span>
+          <span>Important Notice: Software Provided &quot;AS IS&quot; Without Warranty</span>
         </div>
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          By accessing, deploying, or using PeerVault, you acknowledge and agree that this software is provided strictly on an <strong>"AS IS" and "AS AVAILABLE"</strong> basis. The platform maintainers and host providers hold zero liability for data transfers, content, or network availability.
+          By accessing, deploying, or using PeerVault, you acknowledge and agree that this software is provided strictly on an <strong>&quot;AS IS&quot; and &quot;AS AVAILABLE&quot;</strong> basis. The platform maintainers and host providers hold zero liability for data transfers, content, or network availability.
         </p>
       </div>
 

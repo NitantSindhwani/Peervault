@@ -46,12 +46,12 @@ export function createSenderPeerConnection(config?: PeerConnectionConfig): PeerC
   controlChannel.binaryType = 'arraybuffer';
 
   // Dynamic Hardware-Scaled Parallel DataChannels
-  // maxRetransmits: 0 + ordered: false = max throughput (no stalls waiting for retransmits)
-  const numChannels = config?.channelCount || (typeof window !== 'undefined' ? Math.min(12, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2))) : 2);
+  // ordered: false = max throughput parallel lanes; SCTP handles packet loss retransmissions reliably
+  const numChannels = config?.channelCount || (typeof window !== 'undefined' ? Math.min(8, Math.max(2, Math.floor((navigator.hardwareConcurrency || 4) / 2))) : 2);
   const dataChannels: RTCDataChannel[] = [];
 
   for (let i = 0; i < numChannels; i++) {
-    const ch = pc.createDataChannel(`data_${i}`, { ordered: false, maxRetransmits: 0 });
+    const ch = pc.createDataChannel(`data_${i}`, { ordered: false });
     ch.binaryType = 'arraybuffer';
     dataChannels.push(ch);
   }

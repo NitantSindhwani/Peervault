@@ -19,6 +19,6 @@ test.describe('Sprint 1 Features — Auto-Resume, Self-Destruct & Folder Slicer'
 
   test('directory file input button renders', async ({ page }) => {
     await page.goto('/send');
-    await expect(page.getByText('Browse Entire Directory')).toBeVisible();
+    await expect(page.getByText('Select Folder')).toBeVisible();
   });
 });

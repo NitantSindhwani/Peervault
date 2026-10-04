@@ -17,10 +17,13 @@ test.describe('Hardened PeerVault Visual Regression & UI Suite', () => {
 
       // Verify essential UI elements
       await expect(page.locator('h1')).toBeVisible();
-      await expect(page.getByText('PeerVault')).toBeVisible();
+      await expect(page.getByText('PeerVault').first()).toBeVisible();
 
-      // Take snapshot
-      await page.screenshot({ path: `test-results/homepage-${vp.width}x${vp.height}.png` });
+      // Take snapshot (fullPage for Desktop)
+      await page.screenshot({
+        path: `test-results/homepage-${vp.width}x${vp.height}.png`,
+        fullPage: vp.width === 1920,
+      });
     });
 
     test(`Send Page Dropzone Check - ${vp.name}`, async ({ page }) => {
@@ -30,6 +33,24 @@ test.describe('Hardened PeerVault Visual Regression & UI Suite', () => {
 
       await expect(page.locator('h1')).toBeVisible();
       await page.screenshot({ path: `test-results/send-page-${vp.width}x${vp.height}.png` });
+    });
+
+    test(`ClipVault Page Check - ${vp.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto(`${BASE_URL}/clip`);
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.locator('h1')).toBeVisible();
+      await page.screenshot({ path: `test-results/clip-page-${vp.width}x${vp.height}.png` });
+    });
+
+    test(`Dashboard Page Check - ${vp.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto(`${BASE_URL}/dashboard`);
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.locator('h1')).toBeVisible();
+      await page.screenshot({ path: `test-results/dashboard-page-${vp.width}x${vp.height}.png` });
     });
   }
 });

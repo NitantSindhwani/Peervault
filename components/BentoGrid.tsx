@@ -3,88 +3,87 @@
 import {
   ChartLineUp,
   Cpu,
-  CloudArrowUp,
+  ArrowsClockwise,
   Key,
-  GitFork,
+  Lightning,
   Gauge,
 } from '@phosphor-icons/react';
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
 import { TiltCard } from '@/components/TiltCard';
 
 export function BentoGrid() {
-  const reduce = useReducedMotion();
 
   const bentoItems = [
     {
       colSpan: 'md:col-span-2',
       archNo: '#01',
-      title: 'Maximum Speed Control',
-      desc: 'Monitors your network connection continuously to send data at peak speed without lagging your Wi-Fi or dropping connection.',
+      title: 'Dynamic BBR Congestion Control',
+      desc: 'Monitors packet round-trip time continuously to stream data at maximum channel capacity without congesting your Wi-Fi or dropping packets.',
       icon: <ChartLineUp className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--accent)]',
       borderGlow: 'hover:border-[var(--accent)] glow-amber/10',
-      footerLeft: 'Smart Speed Control',
-      footerRight: 'Peak Rate',
+      footerLeft: 'Smart Congestion Control',
+      footerRight: 'BBR Algorithm',
       accentBg: false,
     },
     {
       colSpan: '',
       archNo: '#02',
-      title: 'Fast Browser Encryption',
-      desc: 'Files are encrypted directly inside your browser background threads so your laptop stays fast and smooth while sending.',
+      title: 'Hardware-Accelerated WebCrypto',
+      desc: 'Files are processed directly in Web Worker threads using native AES-256-GCM so your UI stays at 60fps even under heavy multi-gigabyte transfers.',
       icon: <Cpu className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--success)]',
       borderGlow: 'hover:border-[var(--success)]',
-      footerLeft: 'Zero Lag',
-      footerRight: 'AES-256 Encrypted',
+      footerLeft: 'Zero UI Lag',
+      footerRight: 'AES-256-GCM',
       accentBg: true,
     },
     {
       colSpan: '',
       archNo: '#03',
-      title: '24-Hour Offline Backup',
-      desc: 'If your browser tab closes early, your recipient can still finish downloading from temporary self-destructing staging storage.',
-      icon: <CloudArrowUp className="w-6 h-6" weight="bold" />,
+      title: 'Lossless Auto-Resume & Recovery',
+      desc: 'Survives closed tabs, connection drops, and browser restarts. Resumes transfers chunk-by-chunk using IndexedDB bitmap verification.',
+      icon: <ArrowsClockwise className="w-6 h-6" weight="bold" />,
       colorClass: 'text-amber-400',
       borderGlow: 'hover:border-amber-400',
-      footerLeft: 'Auto Self-Destruct',
-      footerRight: 'Tab-Close Proof',
+      footerLeft: 'Zero Data Loss',
+      footerRight: 'IndexedDB Bitmaps',
       accentBg: false,
     },
     {
       colSpan: '',
       archNo: '#04',
-      title: '100% Private & Password Locked',
-      desc: 'Zero-knowledge encryption ensures your files, passwords, and data are never sent to or stored on any central server.',
+      title: '100% Private & Passphrase Locked',
+      desc: 'Zero-knowledge architecture ensures your files, room tokens, and data never touch any server. Ephemeral room signaling self-destructs.',
       icon: <Key className="w-6 h-6" weight="bold" />,
       colorClass: 'text-sky-400',
       borderGlow: 'hover:border-sky-400',
       footerLeft: 'End-to-End Encrypted',
-      footerRight: '100% Private',
+      footerRight: 'Zero Cloud Storage',
       accentBg: false,
     },
     {
       colSpan: 'md:col-span-2',
       archNo: '#05',
-      title: 'Auto-Resume Interrupted Downloads',
-      desc: 'If your internet disconnects for a moment, PeerVault automatically picks up exactly where it left off without re-downloading.',
-      icon: <GitFork className="w-6 h-6" weight="bold" />,
+      title: 'Direct Multi-Lane WebRTC Data Pipes',
+      desc: 'Bypasses single-lane bottlenecks by multiplexing file streams across 12 concurrent unordered SCTP channels for saturation throughput.',
+      icon: <Lightning className="w-6 h-6" weight="bold" />,
       colorClass: 'text-[var(--accent)]',
       borderGlow: 'hover:border-[var(--accent)]',
-      footerLeft: 'Checksum Verified',
-      footerRight: 'Auto Resume',
+      footerLeft: '12 Parallel Channels',
+      footerRight: 'Direct P2P Mesh',
       accentBg: true,
     },
     {
       colSpan: '',
       archNo: '#06',
-      title: 'Low Memory Protection',
-      desc: 'Smart memory management keeps browser RAM usage tiny even when sending 50GB+ large video files, preventing tab crashes.',
+      title: 'Low Memory Disk Streaming',
+      desc: 'Direct File System Access API streaming keeps browser RAM under 128MB even for massive 50GB+ transfers, preventing mobile browser crashes.',
       icon: <Gauge className="w-6 h-6" weight="bold" />,
       colorClass: 'text-emerald-400',
       borderGlow: 'hover:border-emerald-400',
       footerLeft: 'RAM Protection',
-      footerRight: 'No Tab Crashes',
+      footerRight: 'Direct Disk I/O',
       accentBg: false,
     },
   ];
@@ -112,10 +111,7 @@ export function BentoGrid() {
           {bentoItems.map((item, index) => (
             <motion.div
               key={index}
-              initial={reduce ? false : { opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.5, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
+              initial={false}
               className={`${item.colSpan} flex`}
             >
               <TiltCard

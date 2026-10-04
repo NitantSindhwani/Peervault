@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { motion, useReducedMotion, useSpring } from 'motion/react';
 
 export function MagneticButton({
   children,
   className = '',
-  range = 40,
+  range = 10,
   actionScale = 0.98,
 }: {
   children: React.ReactNode;
@@ -35,8 +35,8 @@ export function MagneticButton({
     const distanceX = clientX - centerX;
     const distanceY = clientY - centerY;
 
-    // Restrained magnetic pull clamped to max 10px to prevent button collision/overlap
-    const maxPull = 10;
+    // Restrained magnetic pull clamped to max range
+    const maxPull = range;
     const pullX = Math.max(-maxPull, Math.min(maxPull, distanceX * 0.15));
     const pullY = Math.max(-maxPull, Math.min(maxPull, distanceY * 0.15));
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -9,8 +9,8 @@ import {
   CornersOut,
   ArrowsIn,
   Clock,
-  Gear,
 } from '@phosphor-icons/react';
+import { formatBytes } from '@/lib/utils/format';
 
 export interface MediaPlayerProps {
   src: string;
@@ -60,6 +60,35 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
     };
   }, [src]);
 
+  const togglePlay = useCallback(() => {
+    if (!mediaRef.current) return;
+    if (isPlaying) {
+      mediaRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      mediaRef.current.play();
+      setIsPlaying(true);
+    }
+  }, [isPlaying]);
+
+  const toggleMute = useCallback(() => {
+    if (!mediaRef.current) return;
+    const nextMuted = !isMuted;
+    mediaRef.current.muted = nextMuted;
+    setIsMuted(nextMuted);
+  }, [isMuted]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -87,25 +116,7 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isFullscreen]);
-
-  const togglePlay = () => {
-    if (!mediaRef.current) return;
-    if (isPlaying) {
-      mediaRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      mediaRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const toggleMute = () => {
-    if (!mediaRef.current) return;
-    const nextMuted = !isMuted;
-    mediaRef.current.muted = nextMuted;
-    setIsMuted(nextMuted);
-  };
+  }, [type, togglePlay, toggleFullscreen, toggleMute]);
 
   const handleVolumeChange = (newVolume: number) => {
     if (!mediaRef.current) return;
@@ -129,17 +140,6 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed);
     if (mediaRef.current) mediaRef.current.playbackRate = speed;
-  };
-
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    }
   };
 
   const formatTime = (seconds: number) => {
@@ -191,7 +191,9 @@ export function MediaPlayer({ src, fileName, fileSize, type = 'video', isLivePre
               ref={mediaRef}
               src={src}
             />
-            <p className="text-sm font-bold text-[var(--text-primary)]">{fileName}</p>
+            <p className="text-sm font-bold text-[var(--text-primary)]">
+              {fileName} {fileSize ? <span className="text-xs font-mono text-[var(--text-secondary)] font-normal">• {formatBytes(fileSize)}</span> : null}
+            </p>
           </div>
         )}
 

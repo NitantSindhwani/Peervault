@@ -56,8 +56,8 @@ export class DiskWriter {
     this.mimeType = mimeType || this.inferMimeType(fileName);
     this.streamId = `pv_str_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Memory Blob fallback for files ≤ 1GB — fast in-memory assembly with zero disk overhead
-    if (fileSize <= 1024 * 1024 * 1024) {
+    // Memory Blob fallback for files ≤ 128MB — fast in-memory assembly with zero disk overhead
+    if (fileSize <= 128 * 1024 * 1024) {
       this.tier = 'memory_blob';
       this.useDBPaging = false;
     }
@@ -134,7 +134,7 @@ export class DiskWriter {
       this.totalSize = size;
       // Only downgrade/upgrade tier if we haven't already opened a writable stream
       if (!this.writableStream && !this.fileHandle) {
-        if (size <= 1024 * 1024 * 1024) { // ≤ 1GB — use memory blob (fast assembly)
+        if (size <= 128 * 1024 * 1024) { // ≤ 128MB — use memory blob (fast assembly)
           this.tier = 'memory_blob';
           this.useDBPaging = false;
         } else {

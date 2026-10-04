@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck, LockKey, CheckCircle, ArrowLeft, EyeClosed } from '@phosphor-icons/react';
+import { ShieldCheck, CheckCircle, ArrowLeft, EyeClosed } from '@phosphor-icons/react';
 
 export default function PrivacyPolicyPage() {
   return (

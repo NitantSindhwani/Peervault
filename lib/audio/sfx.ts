@@ -3,11 +3,14 @@
  * Zero external mp3/wav files required — 100% pure Web Audio API synthesized soundscapes
  */
 
+import { soundEngine } from './sound-engine';
+
 class SoundEffects {
   private ctx: AudioContext | null = null;
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
+    if (soundEngine.isMuted()) return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {

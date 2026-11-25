@@ -68,6 +68,20 @@ export function useClipVault(initialPairId?: string) {
       pcRef.current = channels.pc;
       attachChannelEvents(channels.controlChannel);
 
+      channels.pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          fetch('/api/signal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              roomId: newPairId,
+              action: 'submit_sender_candidate',
+              candidate: event.candidate.toJSON(),
+            }),
+          }).catch(() => {});
+        }
+      };
+
       const offer = await channels.pc.createOffer();
       await channels.pc.setLocalDescription(offer);
 
@@ -102,6 +116,12 @@ export function useClipVault(initialPairId?: string) {
             }
 
             if (signalPollerRef.current) clearInterval(signalPollerRef.current);
+          }
+
+          if (channels.pc.remoteDescription && data.receiverCandidates && Array.isArray(data.receiverCandidates)) {
+            for (const cand of data.receiverCandidates) {
+              try { await channels.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+            }
           }
         } catch (pollErr) {
           console.warn('[ClipVault] Poll error:', pollErr);
@@ -141,8 +161,28 @@ export function useClipVault(initialPairId?: string) {
                 });
                 pcRef.current = pc;
 
+                pc.onicecandidate = (event) => {
+                  if (event.candidate) {
+                    fetch('/api/signal', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        roomId: targetPairId,
+                        action: 'submit_receiver_candidate',
+                        candidate: event.candidate.toJSON(),
+                      }),
+                    }).catch(() => {});
+                  }
+                };
+
                 const senderOffer = JSON.parse(data.offer.sdp);
                 await pc.setRemoteDescription(new RTCSessionDescription(senderOffer));
+
+                if (data.senderCandidates && Array.isArray(data.senderCandidates)) {
+                  for (const cand of data.senderCandidates) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch {}
+                  }
+                }
 
                 // Derive shared key from sender's public key
                 if (data.offer.pubKeyHex) {

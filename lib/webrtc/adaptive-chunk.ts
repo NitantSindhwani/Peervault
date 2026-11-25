@@ -7,9 +7,9 @@
  */
 
 export class AdaptiveChunkScaler {
-  private currentChunkSize: number = 256 * 1024;      // 256KB — matches DATA_CHUNK_SIZE
-  private minChunkSize: number = 128 * 1024 - 16;     // 128KB min (don't go too small; header overhead hurts)
-  private maxChunkSize: number = 512 * 1024 - 16;     // 512KB max (fast LAN / loopback)
+  private currentChunkSize: number = 64 * 1024 - 128; // ~64KB safe chunk (65,408 bytes) — matches DATA_CHUNK_SIZE
+  private minChunkSize: number = 32 * 1024 - 128;     // ~32KB min (fallback under high loss/jitter)
+  private maxChunkSize: number = 64 * 1024 - 128;     // ~64KB max (strictly keeps packets <= 65,535 bytes with framing & crypto)
   private stableWindowCount: number = 0;
   private lossCount: number = 0;
 

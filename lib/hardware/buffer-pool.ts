@@ -6,10 +6,10 @@
 
 export class BufferPool {
   private pool: ArrayBuffer[] = [];
-  private chunkSize: number = 262144; // 256 KB
-  private maxPoolSize: number = 256; // Pool capacity: 64 MB
+  private chunkSize: number = 65408; // ~64 KB WebRTC safe chunk
+  private maxPoolSize: number = 256; // Pool capacity: ~16 MB
 
-  constructor(chunkSize: number = 262144, maxPoolSize: number = 256) {
+  constructor(chunkSize: number = 65408, maxPoolSize: number = 256) {
     this.chunkSize = chunkSize;
     this.maxPoolSize = maxPoolSize;
   }

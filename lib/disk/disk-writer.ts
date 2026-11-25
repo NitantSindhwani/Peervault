@@ -48,6 +48,7 @@ export class DiskWriter {
   private fileHandle: any = null;
   private writableStream: any = null;
   private opfsFileHandle: any = null;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(fileName: string, fileSize: number, mimeType?: string) {
     this.fileName = fileName;
@@ -160,8 +161,8 @@ export class DiskWriter {
       }
     }
 
-    // Default to ultra-fast zero-copy memory_blob for files under 1GB
-    if (this.fileSize <= 1024 * 1024 * 1024) {
+    // Default to ultra-fast zero-copy memory_blob for files under 128MB
+    if (this.fileSize <= 128 * 1024 * 1024) {
       this.tier = 'memory_blob';
       this.useDBPaging = false;
       return true;
@@ -205,24 +206,29 @@ export class DiskWriter {
    * Write a chunk to storage (Direct FS, IndexedDB Paging, or Memory)
    */
   public async writeChunk(chunk: ArrayBuffer, offset: number, explicitChunkIndex?: number): Promise<void> {
-    const NOMINAL_CHUNK_SIZE = 262144; // 256KB — must match DATA_CHUNK_SIZE in useTransfer
+    const NOMINAL_CHUNK_SIZE = 64 * 1024 - 128; // ~64KB — matches DATA_CHUNK_SIZE in useTransfer
     const chunkIndex = explicitChunkIndex !== undefined ? explicitChunkIndex : Math.floor(offset / NOMINAL_CHUNK_SIZE);
 
     // Direct File System Access API streaming for massive 10GB–100GB files
+    // Use sequential queue to prevent concurrent write lock errors on WritableStream
     if (this.writableStream) {
-      try {
-        await this.writableStream.write({
-          type: 'write',
-          position: offset,
-          data: chunk,
-        });
-        this.writtenSize += chunk.byteLength;
-        return;
-      } catch (err) {
-        console.warn('[DiskWriter] Direct write failed, falling back to memory storage:', err);
-        this.writableStream = null;
-        this.tier = 'memory_blob';
-      }
+      const currentStream = this.writableStream;
+      this.writeQueue = this.writeQueue.then(async () => {
+        try {
+          await currentStream.write({
+            type: 'write',
+            position: offset,
+            data: chunk,
+          });
+          this.writtenSize += chunk.byteLength;
+        } catch (err) {
+          console.warn('[DiskWriter] Direct write failed, falling back to memory/IndexedDB storage:', err);
+          this.writableStream = null;
+          this.tier = 'memory_blob';
+          this.memoryChunksMap.set(chunkIndex, chunk.slice(0));
+        }
+      });
+      return this.writeQueue;
     }
 
     if (this.useDBPaging) {
@@ -283,6 +289,7 @@ export class DiskWriter {
    * Finalize stream and generate in-app viewing & download blob URL
    */
   public async close(): Promise<{ downloadUrl: string; blob: Blob; tier: DiskWriterTier }> {
+    await this.writeQueue;
     if (this.writableStream) {
       try {
         await this.writableStream.close();

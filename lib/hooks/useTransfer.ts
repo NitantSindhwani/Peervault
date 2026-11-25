@@ -63,7 +63,7 @@ export interface LiveTelemetryState {
   chunkSizeBytes: number;
 }
 
-const DATA_CHUNK_SIZE = 256 * 1024;  // 256 KB – higher throughput on modern networks
+const DATA_CHUNK_SIZE = 64 * 1024 - 128; // ~64KB safe chunk (65,408 bytes) — guarantees packets stay under 64KiB WebRTC MTU
 const DATA_CHANNEL_COUNT = 12;
 const TELEMETRY_SAMPLE_MS = 200;
 
@@ -745,8 +745,8 @@ export function useTransfer({
     try {
       addLog('INFO', `Starting High-Speed WebRTC P2P Stream (${totalChunksEstimate} chunks)`);
       
-      // PRE_BUFFER_SIZE: how many pre-encoded packets to keep ready (more = smoother burst feeding)
-      const PRE_BUFFER_SIZE = 512;
+      // PRE_BUFFER_SIZE: 256 chunks * 64KB = ~16MB in RAM for smooth burst feeding
+      const PRE_BUFFER_SIZE = 256;
 
 
       let compressionSampled = false;
@@ -788,6 +788,10 @@ export function useTransfer({
             const slice = inputFile.slice(bufferOffset, bufferOffset + chunkSize);
             bufferOffset += slice.size;
             let buffer = await slice.arrayBuffer();
+
+            // Hash original unencrypted data chunk into Merkle tree
+            merkleTree.addLeaf(MerkleTree.hashChunk(buffer));
+
             let isCompressed = 0;
 
             if (compressionEnabledRef.current) {
@@ -909,6 +913,7 @@ export function useTransfer({
         // BURST_SIZE controls how many packets we send per event-loop iteration.
         const BURST_SIZE = 512;
         let burstSent = 0;
+        let consecutiveErrors = 0;
         const numChannels = openChannels.length;
         while (preBufferQueue.length > 0 && burstSent < BURST_SIZE) {
           const targetChannel = openChannels[senderProgress.chunkIndex % numChannels];
@@ -926,10 +931,16 @@ export function useTransfer({
                   senderProgress.offset += item.payloadBytes;
                   senderProgress.chunkIndex++;
                   burstSent++;
+                  consecutiveErrors = 0;
                   found = true;
-                } catch (sendErr) {
+                } catch (sendErr: any) {
                   preBufferQueue.unshift(item);
-                  await new Promise((r) => setTimeout(r, 2));
+                  consecutiveErrors++;
+                  scaler.reportLossOrTimeout();
+                  if (consecutiveErrors % 25 === 1) {
+                    addLog('ERROR', `DataChannel send failed on chunk ${item.chunkIndex}: ${sendErr?.message || sendErr}`);
+                  }
+                  await new Promise((r) => setTimeout(r, 4));
                 }
                 break;
               }
@@ -945,10 +956,16 @@ export function useTransfer({
             senderProgress.offset += item.payloadBytes;
             senderProgress.chunkIndex++;
             burstSent++;
-          } catch (sendErr) {
+            consecutiveErrors = 0;
+          } catch (sendErr: any) {
             preBufferQueue.unshift(item);
+            consecutiveErrors++;
+            scaler.reportLossOrTimeout();
+            if (consecutiveErrors % 25 === 1) {
+              addLog('ERROR', `DataChannel send failed on chunk ${item.chunkIndex}: ${sendErr?.message || sendErr}`);
+            }
             console.warn('[Transfer] DataChannel send failed; retrying chunk', item.chunkIndex, sendErr);
-            await new Promise((r) => setTimeout(r, 2));
+            await new Promise((r) => setTimeout(r, 4));
             break;
           }
         }
@@ -1098,6 +1115,7 @@ export function useTransfer({
       const writer = new DiskWriter(initialFileName, initialFileSize);
       await writer.init(fileHandle);
       diskWriterRef.current = writer;
+      merkleTreeRef.current = new MerkleTree();
       keepAliveRef.current?.start();
       setState('negotiating');
 
@@ -1674,6 +1692,10 @@ export function useTransfer({
           await diskWriterRef.current.writeChunk(payload, writeOffset, chunkIndex);
           progress.bytesTransferred += payload.byteLength;
           progress.receivedChunks = receivedChunkSet.size;
+
+          if (merkleTreeRef.current) {
+            merkleTreeRef.current.addLeaf(MerkleTree.hashChunk(payload));
+          }
 
           try {
             if (controlChannel && controlChannel.readyState === 'open') {

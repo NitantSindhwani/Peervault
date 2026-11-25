@@ -408,7 +408,7 @@ export default function ReceivePage() {
               liveData={{
                 ...telemetry,
                 totalBytes: telemetry.totalBytes || offerPayload?.fileSize || 0,
-                totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 262144),
+                totalChunks: telemetry.totalChunks || Math.ceil((offerPayload?.fileSize || 0) / 65408),
               }}
             />
           )}
